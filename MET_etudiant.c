@@ -1,31 +1,31 @@
 /**
  * \file	MET_etudiant.c
- * \brief	Fonction de régulation écrite par les étudiants dont le .hex va être chargé
+ * \brief	Fonction de rï¿½gulation ï¿½crite par les ï¿½tudiants dont le .hex va ï¿½tre chargï¿½
  * \author	Michel Girardin
  * \version	0
  * \date	12.03.2021
  */ 
  // test om
-//** Définitions
-#define     RTPWATCH_MODE_NONE                   	1		/*!< Aucun mode n'as été sélectionné dans RTPWatch */
+//** Dï¿½finitions
+#define     RTPWATCH_MODE_NONE                   	1		/*!< Aucun mode n'as ï¿½tï¿½ sï¿½lectionnï¿½ dans RTPWatch */
 #define     RTPWATCH_MODE_IDENT_BCL_INTERNE      	2		/*!< Identification de la boucle de courant */
 #define     RTPWATCH_MODE_REG_BCL_INTERNE        	3		/*!< Regulation de la bouclde de courant */
 #define     RTPWATCH_MODE_IDENT_BCL_EXT          	4		/*!< Identification de la boucle position/vitesse */
 #define     RTPWATCH_MODE_REG_BCL_EXT        		5		/*!< Regulation de la boucle position/vitesse */
 #define     RTPWATCH_MODE_REG_BCL_EXT_PID          	6		/*!< Regulation de la boucle de position/vitesse par un PID */
 
-//** Définitions de types
+//** Dï¿½finitions de types
 #define UINT32_WATCH(v)     (UpdateWatch(#v,(Uint32*)(&(v)),VAR_INT))
 #define FLOAT_WATCH(v)      (UpdateWatch(#v,(Uint32*)(&(v)),VAR_FLOAT))
 
-#define 	Fe										12000.0	// Fréquence d'échantillonnage
-#define 	Fe2										6000.0	// Fréquence d'échantillonnage pour le resolver
-#define 	h										83.3e-6	// Période d'échantillonnage
+#define 	Fe										12000.0	// Frï¿½quence d'ï¿½chantillonnage
+#define 	Fe2										6000.0	// Frï¿½quence d'ï¿½chantillonnage pour le resolver
+#define 	h										83.3e-6	// Pï¿½riode d'ï¿½chantillonnage
 
 #define		Umax									120.0	// Tension maximale
 #define		Imax									5.0		// Courant maximal
 #define		Wmax									300.0   // Vitesse maximale
-#define 	NbrePairePole							3.0		// Nombre de paires de pôles
+#define 	NbrePairePole							3.0		// Nombre de paires de pï¿½les
 
 #define		PI										3.1416
 #define 	PI_SUR_2								1.5708
@@ -60,7 +60,7 @@ float idm, iqm;
 
 /**
  *	\fn 	void InitialisationEtudiant()
- * 	\brief	Cette fonction est appelée après le chargement du .hex
+ * 	\brief	Cette fonction est appelï¿½e aprï¿½s le chargement du .hex
  */
 void InitialisationEtudiant()
 {
@@ -84,7 +84,7 @@ void InitialisationEtudiant()
 	Gi_w = .0;
 	// position
 	Kp_theta = .0;
-	// Calcul de la vitesse avec dérivée + filtre
+	// Calcul de la vitesse avec dï¿½rivï¿½e + filtre
 	thetaMecanique = 0.0;
 	thetaElectrique = 0.0;
 	sinThetaElectrique = 0.0;
@@ -94,18 +94,18 @@ void InitialisationEtudiant()
 
 /**
  *	\fn 	
- * 	\brief	Cette fonction est appelée pour régler le moteur
+ * 	\brief	Cette fonction est appelï¿½e pour rï¿½gler le moteur
  *
- *	\param	flags 			: regroupe différentes informations:
+ *	\param	flags 			: regroupe diffï¿½rentes informations:
  *								- flags.bit.Mode 			mode de travail de RTPWatch
- *								- flags.bit.FirstMesure		indique la première mesure après un reset
- *	\param	consigne		: consigne envoyée par RTPWatch
+ *								- flags.bit.FirstMesure		indique la premiï¿½re mesure aprï¿½s un reset
+ *	\param	consigne		: consigne envoyï¿½e par RTPWatch
  *	\param	courantBranche1	: courant du moteur (branche 1)
  *	\param	courantBranche2	: courant du moteur (branche 2)
  *	\param	thetaMoteur		: position du moteur
  *	\param	busDC			: tension du bus DC
  * 
- *  \return	tension à appliquer
+ *  \return	tension ï¿½ appliquer
  */
 RapportsCycliques Regulation(FlagsRegulation* flags, float consigne,float courantBranche1, float courantBranche2, float thetaMoteur, float busDC)
 {
@@ -119,7 +119,7 @@ RapportsCycliques Regulation(FlagsRegulation* flags, float consigne,float couran
 	**					Traitement de la mesure de position										**
 	**------------------------------------------------------------------------------------------*/
 	// Une nouvelle mesure de position est disponible une fois sur deux dans le cas du resolver
-	if(flags->bit.FirstMesure)									// set la première mesure comme condition initiale
+	if(flags->bit.FirstMesure)									// set la premiï¿½re mesure comme condition initiale
 		thetaMoteur_old = thetaMoteur;
 	if(flags->bit.NewPosition && flags->bit.ChoixCapteur == RESOLVER)
 	{
@@ -136,7 +136,7 @@ RapportsCycliques Regulation(FlagsRegulation* flags, float consigne,float couran
 		thetaElectrique = thetaMoteur * NbrePairePole;
 		thetaMoteur_old = thetaMoteur;
 		
-		// calul le ssinus et cosinus de thétaElectrique
+		// calul le ssinus et cosinus de thï¿½taElectrique
 		sincos(thetaElectrique, &sinThetaElectrique, &cosThetaElectrique);
 	}
 	
@@ -155,7 +155,7 @@ RapportsCycliques Regulation(FlagsRegulation* flags, float consigne,float couran
 	iqm=-sinThetaElectrique*isa + cosThetaElectrique*isb;
 	
 	/*------------------------------------------------------------------------------------------**
-	**							Régulation (Position, Vitesse, Courant)							**
+	**							Rï¿½gulation (Position, Vitesse, Courant)							**
 	**							-> udc, uqc														**
 	**------------------------------------------------------------------------------------------*/
 
@@ -194,8 +194,8 @@ RapportsCycliques Regulation(FlagsRegulation* flags, float consigne,float couran
 	**							-> usa, usb														**
 	**------------------------------------------------------------------------------------------*/
 
-	usa = 0,0;
-	usb = 0.0;
+	usa = cosThetaElectrique*udc - sinThetaElectrique*uqc ;
+	usb = sinThetaElectrique*udc + cosThetaElectrique*uqc ;
 	
 	/*------------------------------------------------------------------------------------------**
 	**							Calculs des rapports cycliques									**
