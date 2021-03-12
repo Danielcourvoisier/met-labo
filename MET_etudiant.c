@@ -135,6 +135,9 @@ RapportsCycliques Regulation(FlagsRegulation* flags, float consigne,float couran
 		thetaMecanique = nombreTours * TWO_PI + thetaMoteur;
 		thetaElectrique = thetaMoteur * NbrePairePole;
 		thetaMoteur_old = thetaMoteur;
+		
+		// calul le ssinus et cosinus de thétaElectrique
+		sincos(thetaElectrique, &sinThetaElectrique, &cosThetaElectrique);
 	}
 	
 	
@@ -143,7 +146,13 @@ RapportsCycliques Regulation(FlagsRegulation* flags, float consigne,float couran
 	**							-> idm, iqm														**
 	**------------------------------------------------------------------------------------------*/
 
+
+	isa=courantBranche1;
+	isb=Div_sqrt3*(2*courantBranche2+courantBranche1);
 	
+	idm=cosThetaElectrique*isa + sinThetaElectrique*isb;
+	
+	iqm=-sinThetaElectrique*isa + cosThetaElectrique*isb;
 	
 	/*------------------------------------------------------------------------------------------**
 	**							Régulation (Position, Vitesse, Courant)							**
