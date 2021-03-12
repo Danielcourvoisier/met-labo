@@ -5,7 +5,7 @@
  * \version	0
  * \date	12.03.2021
  */ 
- 
+ // test om
 //** Définitions
 #define     RTPWATCH_MODE_NONE                   	1		/*!< Aucun mode n'as été sélectionné dans RTPWatch */
 #define     RTPWATCH_MODE_IDENT_BCL_INTERNE      	2		/*!< Identification de la boucle de courant */
