@@ -113,7 +113,7 @@ RapportsCycliques Regulation(FlagsRegulation* flags, float consigne,float couran
 	float divBusDC;
 	float delta_theta;
 	float h1, h2, Dx, Dy, CMPR1, CMPR2, CMPR3;
-	float usa, usb;
+	float usa, usb,isa,isb;
 	
 	/*------------------------------------------------------------------------------------------**
 	**					Traitement de la mesure de position										**
@@ -163,6 +163,8 @@ RapportsCycliques Regulation(FlagsRegulation* flags, float consigne,float couran
 	{
 		case RTPWATCH_MODE_IDENT_BCL_INTERNE:
 		{
+			udc = 0.0;
+			uqc = consigne;
 		}
 		break;
 
