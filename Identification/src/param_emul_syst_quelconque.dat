@@ -1,0 +1,7 @@
+%Paramètres du système no 1 :
+Ka = [1]
+numGa = [1]
+numGaStr = '[1]'
+denGa = [1e-4 4e-3 1]
+denGaStr = '[0.0001 0.004 1]'
+Tr = [2e-2]

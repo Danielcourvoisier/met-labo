@@ -1,0 +1,87 @@
+/***********************************************************************/
+// fichier : myutilities.lml
+// auteur  : SCD
+// date    : 03.10.03
+//
+// description :
+//  
+//  librairie de fonction utilitaires
+//
+//
+/***********************************************************************/
+
+public
+
+/**********************************************************************
+compte le nb de NaN dans un tableau x
+*/
+function nb = nbNan (x)
+ nb = length(find(isnan(x)));
+ 
+/**********************************************************************
+transformation d'un nombre en dB
+*/
+function nDb = lin2db (nLin)
+ nDb = 20*log10(nLin);
+
+/********************************************************************** 
+transformation d'un angle de radians à degrés
+*/
+function nDeg = rad2deg (nRad)
+ nDeg = 180 * nRad / pi;
+ 
+/**********************************************************************
+fonction qui nettoie une courbe. enlève de la courbe les pts (x1, y1) où
+y == +/-inf,nan zero (à choix)
+utilisée avant de plotter des données par exemple à cause des résultats imprévisibles
+que causent de telles données.
+Dans un plot avec échelle log on peut également enlever les valeurs zéros à l'aide
+de l'argument rmvZeros
+entrées
+-x1,y1 : courbe d'entrée
+sorties
+-x2,y2 : courbe "nettoyée"
+-rmvZeros : true = enlève également les points où y = 0 / false = -
+*/
+function (x2,y2) = cleanPts (x1,y1,rmvZeros = 0)
+
+ indOk = find(isfinite(y1)); //cherche les indices de tous les nombres ~= +/-inf ou nan
+ x2 = x1 (indOk);//ne garde que ces derniers
+ y2 = y1 (indOk);//
+
+ if rmvZeros
+  indOk = find(y2); //cherche les indices des élements ~= 0
+  x2 = x2 (indOk);//ne garde que ces derniers
+  y2 = y2 (indOk);//
+ end
+ 
+/**********************************************************************
+Limite une variable entre une valeur min et une max.
+La variable peut encore avoir une autre valeur (otherVal)
+entrées
+exemple d'utilisation :
+ pour une constante de temps d'une fct de transfert, on peut vouloir donner des valeur
+ entre 0.001 et 0.1, ou encore zero => valeurLimitee = clamp (valeur,0.001,0.1,0)
+-xin : valeur à limiter
+-minVal, maxVal : valeurs limites
+-otherVal : autre valeur acceptable (optionnel)
+sorties
+-xout : valeur limitée
+*/
+function xout = clamp (xin, minVal, maxVal, otherVal)
+ 
+ xout = xin;
+
+ //regarde d'abord si xin = otherVal, auquel cas, rien n'est changé
+ if (nargin == 4) && (xin == otherVal)
+  return;  
+ end
+
+ if xin < minVal
+  xout = minVal; //limitation basse
+ elseif xin > maxVal
+  xout = maxVal; //limitation haute
+ end 
+
+
+/***********************************************************************/

@@ -1,0 +1,98 @@
+/***********************************************************************/
+// fichier : mydialog.lml
+// auteur  : SCD
+// date    : 29.09.03
+//
+// description :
+//  
+//  librairie de fonctions de dialogues
+//
+//
+/***********************************************************************/
+
+public
+
+/**********************************************************************
+invite l'utilisateur à entrer un polynome
+si l'utilisateur entre quelque chose de non autorisé
+a)si ce n'est pas une variable compatible LME, l'invite est réaffichée (par la fonction
+  dialog elle-même)
+b)si la chaine n'est pas transformable en nombre, l'invite est réaffichée avec la
+  valeur défaut 1
+La fonction renvoie le polynome sous forme de matrice, et la chaine de caractère le
+représentant l'intérêt est que si le polynome est multiple, on aura sous forme de chaine
+de caractère sa représentation originale (sans effectuer la convolution entre les diférentes
+parties)
+entrées :
+ -polStrIn (string) : chaîne de caractère à convertir
+sorties :
+ -pol (vecteur) : polynome
+ -polStrOut (string) : chaîne de caractère correspondant à pol
+*/
+function  (pol,polStrOut) = readPol (polStrIn);
+
+ //valeurs par défaut
+ polStrOut = polStrIn;
+ ok = false;
+
+ while ~ok //boucle jusqu'à ce que la saisie clavier soit correcte
+
+  (polStrOut) = dialog('Entrez les polynomes entre apostrophes.\nex : ''[2 1][3 2]''',polStrOut); //dialog
+  (ok,pol) = Str2poly (polStrOut); //conversion string -> polynome
+  if ~ok || isempty(pol) //pour que le polynome ne reste pas vide
+   pol = [1];
+   polStrOut ='[1]';
+  end
+
+ end
+
+
+/***********************************************************************/
+
+private
+
+/**********************************************************************
+fonction qui décode une chaine de caractères en polynome
+la chaine de caractères entrée peut avoir plusieurs polynomes
+ par ex : '[2 1] [3 2]'
+entrées :
+ -polStr (string) : chaîne de caractère à convertir
+sorties :
+ -ok (boolean) : conversion réussie ?
+ -pol (vecteur) : polynome converti
+*/
+function (ok,pol) = Str2poly (polStr)
+
+ ok = false; //par defaut, conversion pas réussie
+ pol = [1];
+
+ if ischar(polStr) //ne traite le cas que si ce qui a été entré est une string
+  posDeb = findstr(polStr,'['); //trouve les débuts de polnome
+  posFin = findstr(polStr,']'); //trouve les fins de polnome
+
+ //vérification
+ // 1. il y a le mm nb de [ et de ]
+ // 2. il y a au moins un [
+  if (size(posDeb,2) == size(posFin,2)) && (size(posDeb,2) >= 1)
+   pol = [1];
+
+   for i=1:size(posDeb,2) //extrait les polynomes l'un apres l'autre
+    
+    try
+     //détermine les coefficients du polynome
+     coeff = [1]; //la fonction eval ne peut pas créer une variable...
+     eval(sprintf('coeff=[%s];',(polStr(posDeb(i)+1:posFin(i)-1))));
+    catch   
+     return; //avec return avec ok = false si eval pas ok
+    end
+
+    pol = conv(pol,coeff); //effectue la convolution pour ajouter la nouvelle contribution
+   end
+   ok = true; //terminé ok
+  end
+
+ end
+
+/***********************************************************************/
+
+

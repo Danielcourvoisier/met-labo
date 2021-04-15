@@ -1,0 +1,553 @@
+/***********************************************************************/
+// fichier : mydiskaccess.lml
+// auteur  : SCD
+// date    : 29.09.03
+//
+// description :
+//
+//  librairie de fonctions d'accès au disque
+//
+// modifications:
+// date   auteur    modifs
+// 9.11.04 SCD      ajout syst résonnant anti-résonnant
+// 5.08.05 SCD      modif pour exportation des données en ascii uniquement
+//                  (plus de fichier .mat)
+//
+/***********************************************************************/
+
+public
+
+/***********************************************************************
+ouverture d'un fichier ASCII craché par l'enregistreur et extraction des données
+le format doit être le suivant
+La fonction affiche une fenêtre d'ouverture de fichier
+t(0) - - u(0) y(0)
+t(1) - - u(1) y(1)
+t(2) - - u(2) y(2)
+...  ...  . . ...
+ '-' : don't care
+entrées
+-disk : true = chargement fichier disque / false = charge données prédéfinies
+sorties
+-t : échelle du temps
+-u : excitation
+-y : réponse
+*/
+function (t,u,y) = load (disk)
+
+ if (disk) //chargement d'un vrai fichier disque
+  path = getfile('Data file :'); //boite de dialogue d'ouverture
+
+  if isempty(path) //traitement en cas d'annulation
+   cancel;
+  end
+
+  fd = fopen(path, 'rt'); //ouverture du fichier
+
+  if fd < 0 //impossible à ouvrir
+   dialog(sprintf('Cannot open file %s', path));
+   cancel;
+  end
+
+  data = [];
+  while ~feof(fd)
+   s = fgetl(fd); //lit une ligne
+
+   if ~isempty(s)	//ne fait rien Si la chaine lue est vide
+        			//(arrive une ligne sur 2, raison inconnue)
+	        		//probablement à cause d'une fin de ligne non-conventionnelle
+    data(:,end+1) = sscanf(s, '%f'); //insére la ligne lue en tant que nouvelle colonne de "data"
+   end
+
+  end
+
+  fclose (fd); //fermeture du fichier
+
+ else
+  data = mesureEmbarquee'; //émulation de chargement
+ end
+
+ t = data(1,:); //extrait les lignes de données
+ u = data(4,:); //la fonction plot exige des données en ligne
+ y = data(5,:); //pas comme dans Matlab ou elle sont egalement acceptees en colonne
+
+
+/**********************************************************************
+chargement des paramètres d'un modèle depuis un fichier .dat
+-mod1 ... mod6 sont en entrée et sortie : seul le modèle chargé sera modifié
+sortie
+-sysNr : le no du modèle chargé
+*/
+function  (sysNr,mod1,mod2,mod3,mod4,mod5,mod6,mod7) = loadMdl (mod1,mod2,mod3,mod4,mod5,mod6,mod7)
+
+ //boite de dialogue d'ouverture
+ path = getfile('Fichier contenant les paramètres du modèle :');
+
+ if isempty(path) //traitement en cas d'annulation
+  cancel;
+ end
+
+ fd = fopen(path, 'rt'); //ouverture du fichier
+
+ if fd < 0 //impossible à ouvrir
+  dialog(sprintf('Cannot open file %s', path));
+  cancel;
+ end
+
+ //lecture du fichier
+ str = [];
+ while ~feof(fd)
+
+  s = fgetl(fd); //lit une ligne
+
+  if ~isempty(s)//ne fait rien si la chaine lue est vide
+       			//(arrive une ligne sur 2, raison inconnue)
+        		//probablement à cause d'une fin de ligne non-conventionnelle
+   str = char(str,s); //insére la nouvelle ligne lue
+  end
+
+ end
+
+ fclose (fd); //fermeture du fichier
+
+ //extraction du no du systeme
+ ligne = str(1,:); //la 1ere ligne contient le no du systeme dont on extrait les param.
+ //enlève les lettres (les caracteres accentues ne sont pas enlevés)
+ ligne = ligne(find (~isletter(ligne)));
+ ligne = sscanf (ligne,'%s') (end-1); //l'avant-dernier morceau doit etre le no
+ sysNr = sscanf(ligne,'%d'); //conversion en entier
+
+ //decodage de tous les paramètres du modèle à charger
+ for i = 2 : size(str,1) //parcourt les lignes restantes
+  ligne = str(i,:); //extrait la ligne
+  //crée la ligne de commande en insérant 'modN.' au début
+  ligneCmd = sprintf('mod%d.%s;',sysNr,ligne);
+  try
+   eval(ligneCmd); //l'exécute
+  catch
+   dialog('erreur lors du chargement du modèle !');
+   sysNr = 1; //remettre une valeur par défaut...
+   return;
+  end
+
+ end
+
+
+/**********************************************************************
+sauvegarde dans un fichier ASCII .dat des paramètres du modèle en cours
+entrées
+-mod1 ... mod6 : paramètres des modèles
+-sysNr : le no du modèle actuel
+*/
+function saveMdl (sysNr,mod1,mod2,mod3,mod4,mod5,mod6,mod7)
+
+ //boite de dialogue d'enregistrement
+ path = putfile('Sauvegarde des paramètres du modèle', 'param.dat');
+ if isempty(path)
+  cancel;
+ end
+
+ //mise en forme de la chaine à écrire dans le fichier
+ str = sprintf('%Paramètres du système no %d :',sysNr);
+
+ //met les paramètres du système courant dans la variable locale "modele"
+ modele = [];
+ cmde = sprintf ('modele = mod%d;',sysNr)
+
+ try
+  eval(cmde);
+ catch
+  dialog('erreur lors de la sauvegarde du modèle !');
+  return;
+ end
+
+ nomChamps = fieldnames(modele);
+
+ for i = 1:length(nomChamps) //parcourt tous les champs du modèle
+  nomChamp = list2num(nomChamps(i));                 // détermine le nom du champ ...
+  valeur = getfield (modele,list2num(nomChamps(i))); //... et sa valeur
+
+  //ajoute la ligne suivante
+  if ~ischar(valeur) //valeur matricielle
+   valeur = sprintf('%.3g ',valeur);
+   valeur = valeur(1:end-1); //enlève le dernier espace
+   str = sprintf('%s\n%s = [%s]',str,nomChamp,valeur); //"nomduchamp = [N1 N2]"
+  else //chaine de caractères
+   str = sprintf('%s\n%s = ''%s''',str,nomChamp,valeur); //"nomduchamp = 'chaine'"
+  end
+ end
+
+ //écriture de la chaine de caractères mise en forme dans le fichier
+ fd = fopen(path, 'wb'); //ne fonctionne pas en text mode... (= 'wt')
+ fprintf(fd,'%s',str);
+ fclose(fd);
+
+/**********************************************************************
+exportation des toutes les données contenues dans une matrice (data)
+dans un fichier ASCII (path).
+Comme un "save -ascii" dans MATLAB, mais avec des commentaires au début.
+entrées
+-path : chemin du fichier (sera écrasé s'il existe déjà)
+-Data : données à exporter dans le fichier
+-listComment: list de strings représentant les lignes de commentaires
+ à rajouter au début du fichier (un '% ' est rajouté au début de chaque ligne)
+*/
+function exportAscii (path, data, listComment)
+
+ fd = fopen(path, 'wb'); //ouverture du fichier en écriture
+
+ //écrit commentaires en début de fichier
+ for i = 1:length(listComment)
+  str = list2num(listComment(i));
+  fprintf(fd, '%% %s\n', str); 
+ end
+ 
+ //écrit data
+ for i = 1:size(data,1) //scan toutes les lignes de la matrice data
+  str = sprintf(' %+.6e',data(i,:)); //crée la ligne
+  fprintf(fd,'%s\n',str(2:end)); //l'ajoute au fichier en enlevant le 1er espace
+ end
+
+ fclose(fd); //fermeture du fichier
+ 
+/**********************************************************************
+remplit la matrice A de nan dans le cas où elle serait vide pour
+en former un vecteur de longueur lMax. Si A n'est pas vide il n'est pas modifié.
+*/
+function (A) = setlength(A,lMax)
+
+ if isempty(A)
+  //A = zeros(1,lMax);
+  //A = nan(1,lMax);   //Sysquake v2.6 n'a pas la fonction nan(n,m)  
+  A = nan * ones(1,lMax);   //Sysquake v2.6 n'a pas la fonction nan(n,m)
+ end
+
+/**********************************************************************
+exportation dans une MAT-file et un fichier ASCII des signaux temporels
+les courbes non affichés ne sont pas exportés (remplis de zéros), car ils
+ne sont calculés que si on les affiche.
+pas affiché -> pas calculé -> rempli de zéros lors de l'exportation
+ .mat : MAT-file / .dat : fichier ASCII
+Les vecteurs sont exportés par colonne dans le format suivant dans le fichier ASCII:
+tMes(1) uMes(1) yMes(1) tMod(1) yMod(1)
+tMes(2) uMes(2) yMes(2) tMod(2) yMod(2)
+.       .       .       .       .
+tMes(n) uMes(n) yMes(n) tMod(n) yMod(n)
+*/
+function exportTemp (tMes,uMes,yMes,tMod,yMod,af_uMes,af_yMes,af_yMod)
+
+ //vide les traces qui ne sont pas affichées
+ // (c'est exactement ce qui est affiché qui est exporté)
+ if ~af_uMes
+  uMes =[];
+ end
+ if ~af_yMes
+  yMes =[];
+ end
+ if ~af_yMod
+  yMod =[];
+ end
+
+ defaultFilename = 'temp_1';
+
+/**************sauvegarde dans fichier ASCII**************/
+ 
+ //boite de dialogue d'enregistrement
+ path = putfile('Sauvegarde des traces temporelles en fichier ASCII .dat',sprintf ('%s.dat', defaultFilename));
+ if isempty(path)
+  cancel;
+ end
+
+ //création de la matrice contenant toutes les données
+ lMax = length(tMes);
+
+ //remplit avec des nans si des vecteurs sont vides
+ // (dans le cas où une courbe n'est pas affichée, elle n'est pas calculée,
+ // donc son vecteur sera vide (=[])
+ uMes = setlength(uMes,lMax);
+ yMes = setlength(yMes,lMax);
+ tMod = setlength(tMod,lMax);
+ yMod = setlength(yMod,lMax);
+
+ Data = [tMes',uMes',yMes',tMod',yMod'];
+
+ listComment = {strFileComment1, strFileComment2, strFileComment3, 'reponse temporelle',''};
+ //obligé de mettre une chaine vide à la fin car la dernière n'est pas toujours écrite
+ 
+ //enregistrement dans le fichier .dat
+ exportAscii (path, Data, listComment);
+
+/*********************************************************************
+exportation dans une MAT-file et un fichier ASCII des réponses fréquentielles
+les courbes non affichés ne sont pas exportés (remplis de zéros), car ils
+ne sont calculés que si on les affiche.
+pas affiché -> pas calculé -> rempli de zéros lors de l'exportation
+ .mat : MAT-file / .dat : fichier ASCII
+Les vecteurs sont exportés par colonne dans le format suivant dans le fichier ASCII:
+ colonne 1 : fMes
+ colonne 2 : module de GaMes
+ colonne 3 : phase de GaMes [degrés]
+ colonne 4 : module de GaMod
+ colonne 5 : phase de GaMod [degrés]
+ colonne 6 : module de GaModAsymp
+ colonne 7 : phase de GaModAsymp [degrés]
+*/
+function exportRepFreq (fMes,GaMes,GaMod,GaModAsymp,af_GaMes,af_GaMod,af_GaModAsymp)
+
+ //vide les traces qui ne sont pas affichées
+ // (c'est exactement ce qui est affiché qui est exporté)
+ if ~af_GaMes
+  GaMes =[];
+ end
+ if ~af_GaMod
+  GaMod =[];
+ end
+ if ~af_GaModAsymp
+  GaModAsymp =[];
+ else
+  //constitution de nb imaginaires à partir de l'amplitude et phase des pts
+  // des bodes asymptotiques.
+  // La fct bode_as utilisee pour obtenir les bodes asymptotiques donne
+  // un résultat sous forme d'amplitude et phase. Des données sont nécessaires
+  // séparément pour affichage, c'est pourquoi elle ne sont pas mises ensemble
+  // (comme ici, dans un nb complexe qui contient tout).
+  // Par contre, ici, cela est fait pour avoir une uniformité des données exportées
+  GaModAsymp = GaModAsymp.amp .* exp(j*GaModAsymp.pha);
+ end
+
+ defaultFilename = 'freq_bode_1';
+
+/**************sauvegarde dans fichier ASCII**************/
+
+ //boite de dialogue d'enregistrement
+ path = putfile('Sauvegarde des réponses fréquentielles en fichier ASCII .dat',sprintf ('%s.dat', defaultFilename));
+ if isempty(path)
+  cancel;
+ end
+
+ //création de la matrice contenant toutes les données
+ lMax = length(fMes);
+
+ //remplit avec des zéros si des vecteurs sont vides
+ // (dans le cas où une courbe n'est pas affichée, elle n'est pas calculée,
+ // donc son vecteur sera vide (=[])
+ GaMes = setlength(GaMes,lMax);
+ GaMod = setlength(GaMod,lMax);
+ GaModAsymp = setlength(GaModAsymp,lMax);
+
+ //attention, lors de la transposée d'une matrice complexe, il faut mettre .' sinon ca la transpose
+ //et ca prend les conjugués complexes en plus.
+ Data = [fMes',abs(GaMes.'),angle(GaMes.')*180/pi,abs(GaMod.'),angle(GaMod.')*180/pi,abs(GaModAsymp.'),angle(GaModAsymp.')*180/pi];
+
+ listComment = {strFileComment1, strFileComment2, strFileComment3, 'reponse frequentielle',''};
+ //obligé de mettre une chaine vide à la fin car la dernière n'est pas toujours écrite
+ 
+ //enregistrement dans le fichier .dat
+ exportAscii (path, Data, listComment);
+
+/*********************************************************************
+exportation dans une MAT-file et un fichier ASCII des fft signaux
+les courbes non affichés ne sont pas exportés (remplis de zéros), car ils
+ne sont calculés que si on les affiche.
+pas affiché -> pas calculé -> rempli de zéros lors de l'exportation
+ .mat : MAT-file / .dat : fichier ASCII
+Les vecteurs sont exportés par colonne dans le format suivant dans le fichier ASCII:
+ colonne 1 : fMes
+ colonne 2 : module de fftUMes
+ colonne 3 : phase de fftUMes [degrés]
+ colonne 4 : module de fftYMes
+ colonne 5 : phase de fftYMes [degrés]
+ colonne 6 : module de fftYMod
+ colonne 7 : phase de fftYMod [degrés]
+*/
+function exportFft (fMes,fftUMes,fftYMes,fftYMod,af_fftUMes_f,af_fftYMes_f,af_fftYMod_f)
+
+ //vide les traces qui ne sont pas affichées
+ // (c'est exactement ce qui est affiché qui est exporté)
+ if ~af_fftUMes_f
+  fftUMes =[];
+ end
+ if ~af_fftYMes_f
+  fftYMes =[];
+ end
+ if ~af_fftYMod_f
+  fftYMod =[];
+ end
+
+ defaultFilename = 'freq_fft_1';
+
+/**************sauvegarde dans fichier ASCII**************/
+
+ //boite de dialogue d'enregistrement
+ path = putfile('Sauvegarde des FFT des signaux en fichier ASCII .dat',sprintf ('%s.dat', defaultFilename));
+ if isempty(path)
+  cancel;
+ end
+
+ //création de la matrice contenant toutes les données
+ lMax = length(fMes);
+
+ //remplit avec des zéros si des vecteurs sont vides
+ // (dans le cas où une courbe n'est pas affichée, elle n'est pas calculée,
+ // donc son vecteur sera vide (=[])
+ fftUMes = setlength(fftUMes,lMax);
+ fftYMes = setlength(fftYMes,lMax);
+ fftYMod = setlength(fftYMod,lMax);
+
+ Data = [fMes',abs(fftUMes.'),angle(fftUMes.')*180/pi,abs(fftYMes.'),angle(fftYMes.')*180/pi,abs(fftYMod.'),angle(fftYMod.')*180/pi];
+
+ listComment = {strFileComment1, strFileComment2, strFileComment3, 'fft signaux',''};
+ //obligé de mettre une chaine vide à la fin car la dernière n'est pas toujours écrite
+
+ //enregistrement dans le fichier .dat
+ exportAscii (path, Data, listComment);
+
+
+/***********************************************************************/
+
+private
+
+//chaines de caractères sauvées comme commentaires dans fichiers ASCII
+define strFileComment1 = 'Fichier créé par identification.sq : utilitaire d''identification de systèmes linéaires sous SysQuake';
+define strFileComment2 = 'Les données ci-après peuvent être importées dans MATLAB par le script prévu à cet effet ''import_figure.m''';
+define strFileComment3 = 'Ne pas modifier la ligne suivante car elle est utilisée par ''import_figure.m'' :';
+
+
+/**********************************************************************
+trace "embarquee" pour emulation de chargement
+128 pts d'une reponse indicielle du 2eme ordre
++ retard pur
+*/
+function (mesure) = mesureEmbarquee
+ mesure = [
+  0.0000000e+000  0.0000000e+000  0.0000000e+000  0.0000000e+000  0.0000000e+000;
+  2.0000000e-003  1.0000000e+000  1.0000000e+000  1.0000000e+000  0.0000000e+000;
+  4.0000000e-003  1.0000000e+000  1.0000000e+000  1.0000000e+000  0.0000000e+000;
+  6.0000000e-003  1.0000000e+000  1.0000000e+000  1.0000000e+000  0.0000000e+000;
+  8.0000000e-003  1.0000000e+000  1.0000000e+000  1.0000000e+000  0.0000000e+000;
+  1.0000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  0.0000000e+000;
+  1.2000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  0.0000000e+000;
+  1.4000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  0.0000000e+000;
+  1.6000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  0.0000000e+000;
+  1.8000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  0.0000000e+000;
+  2.0000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  0.0000000e+000;
+  2.2000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.9412675e-002;
+  2.4000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  7.4902930e-002;
+  2.6000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.6157094e-001;
+  2.8000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  2.7369906e-001;
+  3.0000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  4.0503377e-001;
+  3.2000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  5.4906644e-001;
+  3.4000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  6.9930236e-001;
+  3.6000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  8.4950849e-001;
+  3.8000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.9393213e-001;
+  4.0000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.1274844e+000;
+  4.2000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.2458843e+000;
+  4.4000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.3457604e+000;
+  4.6000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.4247103e+000;
+  4.8000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.4813179e+000;
+  5.0000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.5151321e+000;
+  5.2000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.5266099e+000;
+  5.4000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.5170287e+000;
+  5.6000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.4883749e+000;
+  5.8000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.4432125e+000;
+  6.0000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.3845411e+000;
+  6.2000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.3156474e+000;
+  6.4000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.2399568e+000;
+  6.6000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.1608919e+000;
+  6.8000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0817414e+000;
+  7.0000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0055445e+000;
+  7.2000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.3499337e-001;
+  7.4000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  8.7235718e-001;
+  7.6000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  8.1942717e-001;
+  7.8000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  7.7748506e-001;
+  8.0000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  7.4729302e-001;
+  8.2000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  7.2910444e-001;
+  8.4000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  7.2269332e-001;
+  8.6000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  7.2739980e-001;
+  8.8000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  7.4218881e-001;
+  9.0000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  7.6571852e-001;
+  9.2000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  7.9641541e-001;
+  9.4000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  8.3255233e-001;
+  9.6000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  8.7232648e-001;
+  9.8000000e-002  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.1393431e-001;
+  1.0000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.5564069e-001;
+  1.0200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.9584011e-001;
+  1.0400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0331082e+000;
+  1.0600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0662425e+000;
+  1.0800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0942914e+000;
+  1.1000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.1165710e+000;
+  1.1200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.1326714e+000;
+  1.1400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.1424508e+000;
+  1.1600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.1460205e+000;
+  1.1800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.1437212e+000;
+  1.2000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.1360920e+000;
+  1.2200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.1238353e+000;
+  1.2400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.1077763e+000;
+  1.2600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0888226e+000;
+  1.2800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0679230e+000;
+  1.3000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0460279e+000;
+  1.3200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0240526e+000;
+  1.3400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0028453e+000;
+  1.3600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.8315951e-001;
+  1.3800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.6563245e-001;
+  1.4000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.5076969e-001;
+  1.4200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.3893583e-001;
+  1.4400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.3035142e-001;
+  1.4600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.2509551e-001;
+  1.4800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.2311357e-001;
+  1.5000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.2422983e-001;
+  1.5200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.2816332e-001;
+  1.5400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.3454672e-001;
+  1.5600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.4294712e-001;
+  1.5800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.5288758e-001;
+  1.6000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.6386884e-001;
+  1.6200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.7539014e-001;
+  1.6400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.8696855e-001;
+  1.6600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.9815605e-001;
+  1.6800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0085541e+000;
+  1.7000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0178249e+000;
+  1.7200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0257000e+000;
+  1.7400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0319850e+000;
+  1.7600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0365613e+000;
+  1.7800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0393850e+000;
+  1.8000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0404825e+000;
+  1.8200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0399447e+000;
+  1.8400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0379177e+000;
+  1.8600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0345939e+000;
+  1.8800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0302001e+000;
+  1.9000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0249871e+000;
+  1.9200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0192175e+000;
+  1.9400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0131552e+000;
+  1.9600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0070550e+000;
+  1.9800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0011535e+000;
+  2.0000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.9566148e-001;
+  2.0200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.9075796e-001;
+  2.0400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.8658554e-001;
+  2.0600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.8324788e-001;
+  2.0800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.8080866e-001;
+  2.1000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.7929227e-001;
+  2.1200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.7868587e-001;
+  2.1400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.7894271e-001;
+  2.1600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.7998659e-001;
+  2.1800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.8171700e-001;
+  2.2000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.8401487e-001;
+  2.2200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.8674852e-001;
+  2.2400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.8977971e-001;
+  2.2600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.9296944e-001;
+  2.2800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.9618329e-001;
+  2.3000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  9.9929628e-001;
+  2.3200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0021969e+000;
+  2.3400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0047903e+000;
+  2.3600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0070008e+000;
+  2.3800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0087732e+000;
+  2.4000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0100731e+000;
+  2.4200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0108871e+000;
+  2.4400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0112215e+000;
+  2.4600000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0111002e+000;
+  2.4800000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0105629e+000;
+  2.5000000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0096622e+000;
+  2.5200000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0084606e+000;
+  2.5400000e-001  1.0000000e+000  1.0000000e+000  1.0000000e+000  1.0070272e+000
+  ];
+
+/***********************************************************************/

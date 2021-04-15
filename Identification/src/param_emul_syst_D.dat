@@ -1,0 +1,5 @@
+%Paramètres du système no 6 :
+Ka = [1]
+zeta = [0.2]
+omega_n = [100]
+Tr = [2e-2]

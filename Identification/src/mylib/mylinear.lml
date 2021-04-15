@@ -1,0 +1,384 @@
+/***********************************************************************/
+// fichier : mylinear.lml
+// auteur  : SCD
+// date    : 29.09.03
+//
+// description :
+//  
+//  librairie de fonctions pour systèmes linéaires
+//
+//
+/***********************************************************************/
+
+public
+
+/**********************************************************************
+interpolation d'ordre zero pour un signal (="sur-échantillonnage")
+N-1 pts sont rajoutés entre chaque paire de pts de sig1 pour donner sig2
+ Les valeur des extremités de sig1 et sig2 sont toujours les memes
+exemple :
+ avec N = 1, le signal de sortie = signal d'entrée sig1
+ avec N = 2, sig1 = [0   1   2   4]
+ alors       sig2 = [0 0 1 1 2 2 4]
+*/
+function (sig2) = interpOrdrZero (sig1,N)
+ for i = 1:length(sig1)-1 //parcourt les pts de sig1 du 1er à l'avant-dernier
+  sig2((i-1)*N+1:i*N)= sig1(i); //ajoute le pt intermédiaire
+ end
+ sig2(end+1) = sig1(end);//met le dernier pt
+
+/**********************************************************************
+interpolation d'ordre 1 (linéaire) pour un signal (="sur-échantillonnage")
+N-1 pts sont rajoutés entre chaque paire de pts de sig1 pour donner sig2
+d'après une progression linéaire.
+exemple :
+ avec N = 1, le signal de sortie = signal d'entrée sig1
+ avec N = 2, sig1 = [0     1     2   4]
+ alors       sig2 = [0 0.5 1 1.5 2 3 4]
+*/ 
+function (sig2) = interpLin (sig1,N)
+ vectN = 1:1:N; //vecteur qui permettra de calculer les pts intermediaires
+ increments = diff(sig1)/N; //incréments futurs entre les pts
+
+ sig2 = sig1(1); //premier pt
+ for i = 1:length(sig1)-1 //passe en revue toutes les paires de pts
+  sig2 = [sig2 , (sig1(i)+ vectN*increments(i))]; //calcul des pts intermédiaires et ajout 
+                                                  // au résultat sig2
+ end
+ 
+/**********************************************************************
+Comme le LSIM de MATLAB. accepte la syntaxe standard de MATLAB
+procédé : transformation de la fct de transfert de continu à discret (c2dm) , puis filter.
+ATTENTION : si la période d'échantillonnage donnée dans le vecteur t
+est inadaptée au modèle (trop grossière par rapport aux constantes de temps),
+la transformation en modèle discret ne sera pas terrible et la réponse calculée
+ne correspondra pas au modèle
+entrées
+-numGa,denGa : fct de transfert
+-u1 : vecteur excitation
+-t1 : vecteur temps allant avec
+sorties
+-y2 : vecteur réponse du modèle
+-t2 : vecteur temps allant avec
+*/
+function (y2,t2) = lsim(numGa,denGa,u1,t1)
+
+//Lsim pas encore au point
+
+ //calcul des vecteurs temps et excitation pour la sortie
+ t2 = t1;
+ u2 = u1;
+ 
+ //période d'échantillonnage
+ Te = t1(2) -t1(1);
+
+/*
+  delta_t1 = t1(2)-t1(1); //période d'échantillonnage de l'entrée
+     
+  %la plus petite cste de temps du système détermine
+  % la période d'échantillonnage du système numérique
+//  rac = [roots(denGa);roots(numGa)];
+  rac = roots(denGa);
+  if ~isempty(rac)
+   csteTemps = 1./(abs(real(rac))); //ttes les cstes de temps 
+   pluPetiteCste = min(csteTemps);  //la + petite
+   TeVoulu = pluPetiteCste/25;
+  else
+   TeVoulu = delta_t1; 
+  end
+
+  //détermine les vecteurs temps, excitation et Te
+  if delta_t1 <= TeVoulu //vecteur temps de la mesure OK
+   t2 = t1;
+   u2 = u1;
+   Te = delta_t1;
+  else //delta_t > TeVoulu
+   N = ceil(delta_t1/TeVoulu); //ceil = arrondi à l'entier supérieur
+   Te = delta_t1 / N; //période d'échantillonnage dans un rapport entier avec 
+                      //la période d'échantillonnage de la mesure
+   t2 = 0 : Te : t1(end); //recréer le vecteur temps et excitation
+   u2 = interpLin(u1,N); //interpolation du signal d'excitation
+  end
+  */
+  
+ %transformation en syst. discret pour calcul
+ %attention, la méthode de conversion influence les résultats
+ %zoh (rectangles) donne une correspondance parfaite des pts, mais va moins bien
+ % (le systeme diverge : arrondis, calcul ?) avec un ordre > 4
+ %tustin (trapèzes) n'a pas ce problème (moins vite), mais a une correspondance
+ % de pts moins parfaite. on peut faire ce qu'on veut
+ //ATTENTION : la fonction c2dm perd les pedales par exemple avec 6 cstes de temps
+ //identiques petites. on arrive a 9 cste de temps avant erreur avec tustin
+ //on peut faire ce qu'on veut : periode d'echantillonnage tres petite,
+ // ca n'y change rien car , on est aux limites de calcul (plus petit flottant)
+ [numH,denH] = c2dm(numGa,denGa,Te,'tustin'); //'zoh' ou 'tustin'
+ //avec un systeme impropre, c2dm donne numH  égal à 0 et 
+ // donc la reponse temporelle sera plate
+
+ %calcul de la réponse du système discret équivalent
+ y2 = filter (numH,denH,u2);
+
+/**********************************************************************
+fonction qui convolue N fois le polynome polE par lui-meme pour donner polS
+*/
+function (polS) = convNFois (polE,N)
+ polS = [1];
+ for i = 1:N
+  polS = conv(polS,polE);
+ end
+
+/***********************************************************************/
+/*
+function [numc,denc,error_str] = tfchk(num,den)
+%TFCHK  Check for proper transfer function.
+%   [NUMc,DENc] = TFCHK(NUM,DEN) returns equivalent transfer function
+%   numerator and denominator where LENGTH(NUMc) = LENGTH(DENc) if
+%   the transfer function NUM,DEN are proper.  Prints an error message
+%   if not.
+%       A third output returns the error string instead if erroring
+%       to the command line.
+
+%   Clay M. Thompson 6-26-90
+%   Copyright 1984-2002 The MathWorks, Inc.
+%   $Revision: 1.23 $  $Date: 2002/04/09 00:14:27 $
+
+no = nargout;
+[nn,mn] = size(num);
+[nd,md] = size(den);
+
+% Make sure DEN is a row vector, NUM is assumed to be in rows.
+error_str = '';
+if nd>1,
+   error_str = 'Denominator must be a row vector.';
+elseif (mn > md),
+   error_str = 'Transfer function not proper.';
+end
+if ~isempty(error_str) & (no<3),
+   error(error_str);
+end
+
+% Make NUM and DEN lengths equal.
+numc = [zeros(nn,md-mn),num];
+denc = den;
+
+% end tfchk*/
+
+/***********************************************************************/
+
+function [z,p,k] = tf2zp(num,den)
+%TF2ZP  Transfer function to zero-pole conversion.
+%   [Z,P,K] = TF2ZP(NUM,DEN)  finds the zeros, poles, and gains:
+%
+%                 (s-z1)(s-z2)...(s-zn)
+%       H(s) =  K ---------------------
+%                 (s-p1)(s-p2)...(s-pn)
+%
+%   from a SIMO transfer function in polynomial form:
+%
+%               NUM(s)
+%       H(s) = -------- 
+%               DEN(s)
+%
+%   Vector DEN specifies the coefficients of the denominator in 
+%   descending powers of s.  Matrix NUM indicates the numerator 
+%   coefficients with as many rows as there are outputs.  The zero
+%   locations are returned in the columns of matrix Z, with as many 
+%   columns as there are rows in NUM.  The pole locations are returned
+%   in column vector P, and the gains for each numerator transfer 
+%   function in vector K. 
+%
+%   For discrete-time transfer functions, it is highly recommended to
+%   make the length of the numerator and denominator equal to ensure 
+%   correct results.  You can do this using the function EQTFLENGTH in
+%   the Signal Processing Toolbox.  However, this function only handles
+%   single-input single-output systems.
+%   
+%   See also ZP2TF.
+
+%   Clay M. Thompson 11-6-90 
+%   Revised ACWG 1-17-90
+%   Copyright 1984-2002 The MathWorks, Inc.
+%   $Revision: 1.26 $  $Date: 2002/04/09 00:14:27 $
+
+//enlevé, comme ça on peut également tracer les asymptotes de systemes impropres
+//[num,den] = tfchk(num,den);
+
+% Normalize transfer function
+if length(den)
+    coef = den(1);
+else
+    coef = 1;
+end
+
+/* pose des problemes avec un systeme d'ordre eleve avec de tres petites cstes de temps...
+if abs(coef)<eps,
+  error('Denominator must have non-zero leading coefficient.');
+end
+*/
+
+den = den./coef;
+num = num./coef;
+
+% Remove leading columns of zeros from numerator
+if length(num)
+    while(all(num(:,1)==0) & length(num) > 1)
+        num(:,1) = [];
+    end
+end
+[ny,np] = size(num);
+
+% Poles
+p  = roots(den);
+
+% Zeros and Gain
+k = zeros(ny,1);
+linf = inf;
+z = linf(ones(np-1,1),ones(ny,1));
+for i=1:ny
+  zz = roots(num(i,:));
+  if length(zz), z(1:length(zz), i) = zz; end
+  ndx = find(num(i,:)~=0);
+  if length(ndx), k(i,1) = num(i,ndx(1)); end
+end
+
+/**********************************************************************
+nécessaire pour bode_as. même comportement que "sign", sauf 
+que sign(0) = 0, alors que sign2(0) = 1
+*/
+function (y) = sign2(x);
+ if x==0
+  y = 1;
+  return;
+ end
+ y = sign(x);
+
+/***********************************************************************/ 
+
+
+	function [A_Gas,phi_Gas,omega] = bode_as(numG,denG,omega)
+%	function [A_Gas,phi_Gas,omega] = bode_as(numG,denG,omega)
+
+%	Trace le lieu de Bode asymptotique de la transmittance G(s)
+
+/*
+%	Si le vecteur de pulsations n'est pas specifie, le determine
+	if nargin < 3, 
+		[A_G,phi_G,omega] = bode(numG,denG);
+		omega = logspace(log10(min(omega))-1,log10(max(omega))+1,100);
+	end
+*/
+
+	if nargin < 2, error('Il manque numerateur et denominateur'); end
+
+	corr = 1;	%repete la meme erreur que MATLAB : angle(-1) = 180
+			%si corr=1;
+
+%	Extraction et tri des poles et zéros
+
+	[z_G,s_G,k_G] = tf2zp(numG,denG);
+
+	z_G = sort(z_G);
+	s_G = sort(s_G);
+
+	m = length(z_G);
+	n = length(s_G);
+
+%	Formation du vecteur de pulsation
+/*	tmp = sort([min(omega),0.1*abs(z_G'),abs(z_G'),10*abs(z_G'),...
+				0.1*abs(s_G'),abs(s_G'),10*abs(s_G'),max(omega)]);
+	
+	[ind] = find(((tmp <= max(omega)) & (tmp >= min(omega))));
+	omega = tmp(ind);*/
+	
+
+%	Formation des elements simples du denominateur
+	den = zeros(n,2);
+	den(:,:) = [ones(n,1),-s_G];	%den = 	[	1,-s1
+					%		1,-s2
+					%etc
+
+
+	A_Gas = abs(k_G) * ones(length(omega),1);
+	phi_Gas = zeros(length(omega),1) + (-corr)*angle(k_G);
+
+	if m ~= 0,
+
+%	S'il y a des zeros :
+%	Formation des elements simples du numerateur
+		num = zeros(m,2);
+		num(1:m,:) = [ones(m,1),-z_G];
+		for i = 1:m
+			for k = 1:length(omega)
+
+				%pulsation caracteristique
+				wp = abs(num(i,2));
+
+				%asymptotes de gain
+				if omega(k) <= wp
+					A(k,1) = wp;
+				else
+					A(k,1) = abs(num(i,1)*omega(k));
+				end
+	
+				%asymptotes de phase
+				if omega(k) <= wp/10  
+					phi(k,1) = corr * angle(num(i,2));
+				elseif omega(k) >= wp*10
+					phi(k,1) = corr * angle(num(i,2))+...
+						pi/2*sign2(real(num(i,2)));
+				end
+	
+				if (omega(k) > wp/10) & (omega(k) < wp*10)
+					phi(k,1) = corr * angle(num(i,2))+...
+						sign2(real(num(i,2)))*...
+						pi/4*log10(omega(k)/(wp/10));
+				end
+			
+			end
+	
+			A_Gas = A_Gas .* A(:,1);
+			phi_Gas = phi_Gas + phi(:,1);
+		end
+		
+	end	%if	
+
+%	Calcul des contributions A_i et phi_i de chaque pole
+%	La pulsation propre omega_pi de chaque pole s_i est donnee par son module abs(den(i,2))
+	for i = 1:n
+		for k = 1:length(omega)
+
+			if omega(k) <= abs(den(i,2))		%si omega <= omega_p_i
+				A(k,1) = 1/abs(den(i,2));	%A_i = 1/abs(-s_i)
+			else					
+				A(k,1) = 1/omega(k);		%sinon A_i = 1/abs(1*omega)
+			end
+
+			if omega(k) <= abs(den(i,2))/10		%si omega <= omega_p_i/10  
+				phi(k,1) = -angle(den(i,2));	%phi_i = -arg(-s_i)
+			elseif omega(k) >= abs(den(i,2))*10	%sinon si omega >= omega_p_i*10
+								%
+				phi(k,1) = -angle(den(i,2))+...
+					pi/2*sign2(real(den(i,2)));
+			end
+
+			if (omega(k) > abs(den(i,2))/10) & ...
+				(omega(k) < abs(den(i,2))*10)
+				phi(k,1) = -angle(den(i,2))+...
+					sign2(real(den(i,2)))*...
+					pi/4*log10(omega(k)/...
+					(abs(den(i,2))/10));
+			end
+		
+		end
+
+		A_Gas = A_Gas .* A(:,1);
+		phi_Gas = phi_Gas - phi(:,1);
+	end
+
+    //transpose les matrices car elle sont en colonne alors que omega est en ligne
+    A_Gas = A_Gas';
+    phi_Gas = phi_Gas';
+
+//	phi_Gas = 180/pi*phi_Gas;	
+
+/***********************************************************************/

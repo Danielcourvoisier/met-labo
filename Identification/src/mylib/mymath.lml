@@ -1,0 +1,58 @@
+/***********************************************************************/
+// fichier : mymath.lml
+// auteur  : SCD
+// date    : 25.09.03
+//
+// description :
+//  
+//  librairie de fonction mathématiques
+//
+//
+/***********************************************************************/
+
+public
+
+/**********************************************************************
+renvoie true si nRef est egal a une puissance entiere positive de 2
+*/
+function  (v) = estPuiss2(nRef)
+ v = false;
+ nb = 1;
+
+ while true //itérations en prenant chaque fois une puissance de 2 superieure
+
+  if nb < nRef
+   nb = nb * 2; //essayer encore   
+  elseif nb > nRef //puissance de 2 correspondante pas trouvee
+   return; 
+  else //nb = nRef (=> nRef égal à une puissance de 2)
+   v = true; 
+   return;    
+  end
+
+ end
+
+/**********************************************************************
+calcul du "fit" entre 2 suites de pts. 
+ somme (carre des erreurs) / (Npts * Psignal_mes) et Npts se
+ simplifie avec celui inclu dans Psignal_mes
+ cela donne : Psignal_err / Psignal_mes_AC
+ Division par la puissance du signal de référence AC dans la mise à l'échelle
+ car il est logique de ne pas tenir compte de l'offset dans la mise à l'échelle
+entrées
+-yMes = référence
+-yMod = courbe dont il faut quantifier le "fit"
+sortie
+-fit = qualité de yMod par rapport à yMes (bon = petite valeur / mauvais = grande valeur)
+*/
+function (fit) = calcFit(yMes,yMod);
+
+ //enlève les pts non valides (nan, +/-inf) du calcul
+// ind = find(~isnan(yMes));
+ ind = find(isfinite(yMes));
+ yMes = yMes(ind);
+ yMod = yMod(ind);
+   
+ fit = sum((yMes-yMod).^2)/sum((yMes-mean(yMes)).^2);  
+
+/***********************************************************************/

@@ -1,0 +1,817 @@
+/***********************************************************************/
+// fichier : identification.sq
+// auteur  : SCD
+// date    : 27.10.03
+// version : 1.03
+//
+// description :
+//
+//  -projet d'identification pour laboratoire de régulation
+//  -destiné à remplacer identification.m
+//  -L'étudiant choisit le système à identifier et ensuite fait varier
+//   les paramètres du modèle jusqu'à faire coller les courbes.
+//  -doc complète dans S:\Regulation\Outils\identification_sysquake\
+//
+// modifications:
+// date   auteur    modifs
+// 9.11.04 SCD       ajout syst résonnant anti-résonnant
+//                   +actualisé calcul du fit pour sysquake v2.6
+//                    (logspace a changé)
+// 5.08.05 SCD      adaptation de la librairie 'mydiskaccess.lml' pour
+//                  exportation des données en ascii uniquement
+//                  (plus de fichier .mat)
+//
+/***********************************************************************/
+
+title "Identification"
+
+//apparaît dans le menu "help > about xyz" de SysQuake
+version
+{@
+Identification v1.03, par S.Castoldi, septembre 05
+
+Développé à l'institut d'automatisation industrielle (iAi) de
+ l'Ecole d'ingénieurs du canton de Vaud (EIVD).
+
+Commentaires, remarques, questions sont à envoyer à iai@eivd.ch
+ avec comme sujet "identification sysquake".
+@}
+
+//apparaît dans le menu "help > xyz" help de SysQuake
+help
+{@
+description générale :
+
+Ce programme Sysquake est destiné à l'identification de systèmes linéaires.
+
+On peut choisir le type du système à identifier avec les boutons radio, puis régler
+les paramètres de la manière appropriée à l'aide des contrôles en dessous.
+Le choix du "système quelconque" offre plus de liberté. Sa fonction de transfert
+n'a pas de composantes prédéfinies.
+
+Sommairement, voici les différents éléments nécessaires à une utilisation rapide :
+
+1. Enregistrer la réponse du système depuis RTPWatch. L'exporter dans un fichier .dat.
+
+2. Ouvrir le programme d'identification. Original
+ dans : S:\Regulation\Outils\identification_sysquake\
+
+3. Dans le menu Settings, choisir " charger données " et ouvrir le fichier créé au point 1.
+
+4. Choisir le type de système à identifier à l'aide des boutons radio.
+
+5. Changer les paramètres et faire " coller " les courbes :
+
+On peut modifier chaque paramètre en pressant le bouton qui porte son nom ou en bougeant
+ le slider s'il en a un.
+Les numérateurs ou dénominateurs s'entrent directement avec leur polynôme(s) entre crochets.
+ Les différents coefficients sont séparés par un espace ou une virgule.
+ On peut en mettre plusieurs. Ex = '[0.1 1] [0.2,1]' (avec les apostrophes)
+Le "fit" en dessus de chaque graphique indique la qualité  du modèle.
+ Une petite valeur indique un modèle qui concorde bien avec la mesure.
+On peut procéder à une identification temporelle (figure en bas à gauche) ou fréquentielle
+ (figures de droite).
+Les courbes concernant la mesure effectuée sont en bleu. Celles du modèle donné par
+ les paramètres choisis par l'utilisateur sont en magenta.
+
+Mode d'emploi plus détaillé disponible sous
+S:\Regulation\Outils\identification_sysquake
+@}
+
+/***********************************************************************/
+/*variables*************************************************************/
+/***********************************************************************/
+
+variable tMesBrut,uMesBrut,yMesBrut //donnees directement extraites du fichier
+
+//donnees du fichier apres
+// a)avoir enlevé l'offset le cas échéant
+// b)n'avoir pris que la 2eme moitie des pts le cas échéant
+variable tMes,uMes,yMes
+variable tMod,yMod //réponse calculée du modele
+
+variable fMes,fftUMes,fftYMes //fft des signaux temporels
+variable fftYMod //fft de la réponse du modèle
+
+//réponses fréquentielles
+variable GaMes
+variable fMod,GaMod,GaModAsymp
+
+//sert à indiquer comment traiter les signaux temporels
+// a)enlever l'offset ?
+// b)ne prendre que la 2eme moitie des pts ?
+variable rmvOffset,scndHalf
+
+//indique s'il faut afficher les traces servant a l'identification temporelle
+// et/ou fréquentielle
+variable identTemp,identFreq
+
+//indication de quelles courbes afficher dans les graphes (choix dans le menu)
+variable af_uMes, af_yMes, af_yMod //dans le domaine temps
+variable af_fftUMes_f, af_fftYMes_f, af_fftYMod_f //fft des signaux
+variable af_GaMes, af_GaMod, af_GaModAsymp //dans le domaine fréq.
+
+variable sysNr //quel type de système est-on en train d'identifier ?
+
+variable mod1,mod2,mod3,mod4,mod5,mod6,mod7; //paramètres des modèles
+
+variable numGa,denGa,Tr //fonction de transfert continue en s du modèle actuel
+
+/***********************************************************************/
+/*prototypes de fonctions***********************************************/
+/***********************************************************************/
+
+init (tMesBrut,uMesBrut,yMesBrut,rmvOffset,scndHalf,identTemp,identFreq,...
+      af_uMes,af_yMes,af_yMod,af_GaMes,...
+      af_GaMod,af_GaModAsymp,af_fftUMes_f, af_fftYMes_f, af_fftYMod_f,sysNr,...
+      mod1,mod2,mod3,mod4,mod5,mod6,mod7) = init
+
+//gere l'enlevement d'offset et la prise de la 2eme moitie des pts
+make (tMes,uMes,yMes,fMes) = calcSigMes (tMesBrut,uMesBrut,yMesBrut,rmvOffset,scndHalf)
+
+//calcule la réponse temporelle du modèle
+make (tMod,yMod) = calcRepTempMod (tMesBrut,uMesBrut,numGa,denGa,Tr,rmvOffset,scndHalf,af_yMod)
+
+//calcule les FFT des signaux mesurés
+make (fftUMes,fftYMes) = calcFftSigMes (uMes,yMes, af_GaMes, af_fftUMes_f, af_fftYMes_f,af_fftYMod_f)
+
+//representation frequentielle de la reponse du modele
+make (fftYMod) = calcFftSigMod (fftUMes, GaMod, af_fftYMod_f)
+
+//calcul de la reponse frequentielle de la mesure
+make (GaMes) = calcRepFreqMes(fftUMes,fftYMes,af_GaMes)
+
+//calcul de la reponse frequentielle du modele
+make (fMod,GaMod,GaModAsymp) = calcRepFreqMod(fMes,numGa,denGa,Tr,af_GaMod, af_GaModAsymp,af_fftYMod_f)
+
+//calcule la fct de transfert du modele
+make (numGa,denGa,Tr) = calcFctTrans (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr)
+
+
+figure "Paramètres"
+ draw drawParam (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr)
+ mousedrag (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr) = dragParam (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr,_x1,_nb,_id)
+
+figure "Réponse temporelle"
+ draw drawSigTemp (tMes,uMes,yMes,tMod,yMod,af_uMes,af_yMes,af_yMod)
+
+figure "Réponse fréquentielle : amplitude"
+ draw drawBodeAmp (fMes,GaMes,fMod,GaMod,GaModAsymp,af_GaMes,af_GaMod,af_GaModAsymp)
+
+figure "Réponse fréquentielle : phase"
+ draw drawBodePha (fMes,GaMes,fMod,GaMod,GaModAsymp,af_GaMes,af_GaMod,af_GaModAsymp)
+
+figure "fft (signaux) : amplitude"
+ draw drawFftSigAmp (fMes,fftUMes,fftYMes,fftYMod, af_fftUMes_f, af_fftYMes_f, af_fftYMod_f)
+
+figure "fft (signaux) : phase"
+ draw drawFftSigPha (fMes,fftUMes,fftYMes,fftYMod, af_fftUMes_f, af_fftYMes_f, af_fftYMod_f)
+
+/***********************************************************************/
+/*menus*****************************************************************/
+/***********************************************************************/
+
+menu "Charger données de l'enregistreur" (tMesBrut,uMesBrut,yMesBrut) = chargeFichier(1);
+menu "Emuler chargement"  (tMesBrut,uMesBrut,yMesBrut) = chargeFichier(0);
+separator
+menu "Charger param. modèle" (sysNr,mod1,mod2,mod3,mod4,mod5,mod6,mod7) = loadMdl (mod1,mod2,mod3,mod4,mod5,mod6,mod7);
+menu "Sauver param. modèle" saveMdl (sysNr,mod1,mod2,mod3,mod4,mod5,mod6,mod7);
+separator
+menu "Exporter signaux temp." exportTemp (tMes,uMes,yMes,tMod,yMod,af_uMes,af_yMes,af_yMod);
+menu "Exporter rép. fréq."    exportRepFreq (fMes,GaMes,GaMod,GaModAsymp,af_GaMes,af_GaMod,af_GaModAsymp);
+menu "Exporter FFT signaux"   exportFft     (fMes,fftUMes,fftYMes,fftYMod,af_fftUMes_f,af_fftYMes_f,af_fftYMod_f);
+separator
+menu "Enlever offset réponses"   _checkmark(rmvOffset) rmvOffset=not(rmvOffset);
+menu "2ème moitié des pts seul." _checkmark(scndHalf) scndHalf =not(scndHalf) ;
+separator
+menu "Identification temporelle"      _checkmark(identTemp) (identTemp,af_uMes,af_yMes,af_yMod)=toggleIdentTemp(identTemp);
+menu "  Signal temporel (excitation)" _checkmark(af_uMes) af_uMes=not(af_uMes);
+menu "  Signal temporel (mesure)"	  _checkmark(af_yMes) af_yMes=not(af_yMes);
+menu "  Signal temporel (modèle)"	  _checkmark(af_yMod) af_yMod=not(af_yMod);
+separator
+menu "Identification fréquentielle"_checkmark(identFreq) (identFreq,af_GaMes,af_GaMod,af_GaModAsymp)=toggleIdentFreq(identFreq,af_GaModAsymp);
+menu "  Réponse fréq. (mesure)"	_checkmark(af_GaMes) af_GaMes=not(af_GaMes);
+menu "  Réponse fréq. (modèle)"	_checkmark(af_GaMod) af_GaMod=not(af_GaMod);
+menu "  Réponse fréq. asympt. (modèle)" _checkmark(af_GaModAsymp) af_GaModAsymp=not(af_GaModAsymp);
+separator
+menu "FFT excitation"       _checkmark(af_fftUMes_f) af_fftUMes_f=not(af_fftUMes_f);
+menu "FFT réponse mesurée"  _checkmark(af_fftYMes_f) af_fftYMes_f=not(af_fftYMes_f);
+menu "FFT réponse calculée" _checkmark(af_fftYMod_f) af_fftYMod_f=not(af_fftYMod_f);
+
+/***********************************************************************/
+functions
+{@
+
+/***********************************************************************/
+/*constantes************************************************************/
+/***********************************************************************/
+
+define minNPtsTemp = 16; //nb de pts min pour afficher les réponses temp.
+define minNPtsFreq = 15; //nb de pts min pour afficher les réponses fréq.
+
+/***********************************************************************/
+
+use mymath, mylinear, mydialog, mydiskaccess, myutilities, mymdl, stdlib ;
+//stdlib pour logspace
+
+/***********************************************************************/
+/*fonctions*************************************************************/
+/***********************************************************************/
+
+/**********************************************************************
+initialisation des variables
+entrées:
+-toutes les variables qui ne vont pas être initialisées par voie de conséquence
+ dans un make
+*/
+function (tMesBrut,uMesBrut,yMesBrut,rmvOffset,scndHalf,identTemp,identFreq,...
+      af_uMes,af_yMes,af_yMod,af_GaMes,...
+      af_GaMod,af_GaModAsymp,af_fftUMes_f, af_fftYMes_f, af_fftYMod_f,sysNr,...
+      mod1,mod2,mod3,mod4,mod5,mod6,mod7) = init
+
+ //empty car rien de chargé encore
+ tMesBrut = [];
+ uMesBrut = [];
+ yMesBrut = [];
+ yMod     = [];
+
+ //etats des items du menu
+ rmvOffset = false;
+ scndHalf = false;
+
+ //par défaut, identification temporelle et fréquentielle
+ identTemp = true;
+ identFreq = true;
+
+ //indique quelle courbes afficher dans chaque graphe
+ af_uMes = true;
+ af_yMes = true;
+ af_yMod = true;
+ af_GaMes = true;
+ af_GaMod = true;
+ af_GaModAsymp = false;
+ af_fftUMes_f = false;
+ af_fftYMes_f = false;
+ af_fftYMod_f = false;
+
+ //valeurs par défaut des paramètres des modèles
+ sysNr = 1;
+ mod1 = defaultMod1;
+ mod2 = defaultMod2;
+ mod3 = defaultMod3;
+ mod4 = defaultMod4;
+ mod5 = defaultMod5;
+ mod6 = defaultMod6;
+ mod7 = defaultMod7;
+
+ //disposition des graphes
+ subplots ('Paramètres\tRéponse fréquentielle : amplitude\nRéponse temporelle\tRéponse fréquentielle : phase'); //disposition des graphes
+
+/**********************************************************************
+Dessine les controles concernant les modeles
+*/
+function drawParam (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr)
+
+ drawParam2 (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr);
+
+/**********************************************************************
+gère les actions sur les contrôles
+*/
+function (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr) = dragParam (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr,x1,nb,id)
+
+ (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr) = dragParam2 (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr,x1,nb,id);
+
+/**********************************************************************
+affiche les traces désirées
+entrées
+-tMes,uMes,yMes : respectivement vecteurs temps, excitation et réponse mesurés
+-tMod,yMod : respectivement vecteurs temps et réponse calculés
+-af_uMes,af_yMes,af_yMod : indication d'afficher ou non respectivement l'excitation,
+ la réponse mesurée et celle calculée
+*/
+function drawSigTemp (tMes,uMes,yMes,tMod,yMod,af_uMes,af_yMes,af_yMod)
+ if length(tMes) >= minNPtsTemp; //suffisament de pts pour affichage ?
+
+  if af_uMes
+   plot (tMes,uMes,':r'); //affiche signal d'excitation
+  end
+
+  if af_yMes
+   plot (tMes,yMes,'b'); //affiche réponse mesurée
+  end
+
+  if af_yMod
+   plot (tMod,yMod,'m'); //affiche réponse modèle
+  end
+
+  if af_yMod && af_yMes //affichage du titre qui inclut le fit le cas échéant
+
+   //ATTENTION : pour le moment, les 2 échelles temporelles sont égales,
+   //on peut donc soustraire les 2 vecteurs (mesure et modèle) pour avoir le
+   //vecteur différence afin de calculer le fit
+   //Si dans le futur, il ne sont plus équivalents, il faudra alors "re-synchroniser"
+   //les deux courbes (sous-échantillonnage d'une par ex)
+
+   //calcul du "fit" (quantification de la qualité du modèle par rapport à la mesure)
+   fit_t = calcFit(yMes,yMod);
+
+   title(sprintf('Réponse temporelle, fit = %.3g',fit_t));
+  else
+   title('Réponse temporelle');
+  end
+
+  legend ('excitation\nréponse\nmodèle',':rbm');
+  label('t [s]');
+ end
+
+/**********************************************************************
+affiche les bodes d'amplitude désirés
+entrées
+-fMes,GaMes : vecteur fréq et rép. fréq. mesurés
+-fMod,GaMod,GaModAsymp : vecteur fréq et rép. fréq. et rép. fréq. asymptotique du modèle
+-af_GaMes,af_GaMod,af_GaModAsymp : indication d'afficher ou non respectivement les rép. fréq
+ mesurée, calculée et calculée asymptotique
+*/
+function drawBodeAmp (fMes,GaMes,fMod,GaMod,GaModAsymp,af_GaMes,af_GaMod,af_GaModAsymp)
+
+ if length(fMes >= minNPtsFreq) //suffisament de pts pour affichage ?
+
+  scale ('loglin'); //échelle log de fréquence
+
+  if af_GaMes
+   GaMesDb = lin2db(abs(GaMes));
+   (f1,GaMesDb1) = cleanPts(fMes,GaMesDb,0); //enlève les pts qui font planter le plot
+   plot (f1,GaMesDb1,'b'); //affiche réponse mesurée
+  end
+
+  if af_GaMod
+   GaModDb = lin2db(abs(GaMod));
+   plot (fMod,GaModDb,'m'); //affiche rép. fréq. modèle
+  end
+
+  if af_GaModAsymp
+   GaModAsympDb = lin2db(GaModAsymp.amp);
+   plot (fMod,GaModAsympDb,':m'); //affiche rép. fréq. asymp. modèle
+  end
+
+  if af_GaMes && af_GaMod //affichage du titre qui inclut le fit le cas échéant
+
+   //on ne prend que la 1ère moitié des pts pour 2 raisons :
+   // 1.avec une échelle log, une grande partie des pts (répartis linéairement)
+   //   sont groupés à la fin
+   // 2.la fonction de transfert mesurée a toujours beaucoup de bruit à droite
+   //GaMesDb = GaMesDb(1:length(GaMesDb)/2);
+   //GaModDb = GaModDb(1:length(GaModDb)/2);
+
+   //pondération des pts pour la raisons suivantes :
+   // 1.avec une échelle log, une grande partie des pts (répartis linéairement)
+   //   sont groupés à la fin. si on ne fait aucune pondération, le fit est le meilleur
+   //   lorsque la fin de la courbe (plus de pts) colle bien
+   pond = logspace(log10(max(fMes)),log10(min(fMes)),length(fMes)); //vecteur log renversé
+   GaMesDb = GaMesDb .* pond;
+   GaModDb = GaModDb .* pond;
+
+   //calcul du "fit" (quantification de la qualité du modèle par rapport à la mesure)
+   fit_f = calcFit(GaMesDb,GaModDb); //calcul du fit
+
+   title(sprintf('Réponse fréquentielle : amplitude, fit = %.3g',fit_f));
+  else
+   title('Réponse fréquentielle : amplitude');
+  end
+
+  legend ('mesure\nmodèle\nmodèle asymp.','bmm:');
+  label('f [Hz]');
+ end
+
+/**********************************************************************
+affiche les bodes de phase désirés
+entrées
+-fMes,GaMes : vecteur fréq et rép. fréq. mesurés
+-fMod,GaMod,GaModAsymp : vecteur fréq et rép. fréq. et rép. fréq. asymptotique du modèle
+-af_GaMes,af_GaMod,af_GaModAsymp : indication d'afficher ou non respectivement les rép. fréq
+ mesurée, calculée et calculée asymptotique
+*/
+function drawBodePha (fMes,GaMes,fMod,GaMod,GaModAsymp,af_GaMes,af_GaMod,af_GaModAsymp)
+
+ if length(fMes >= minNPtsFreq) //suffisament de pts pour affichage ?
+
+  scale ('loglin'); //échelle log de fréquence
+
+  if af_GaMes
+   GaMesDeg = rad2deg(angle(GaMes));
+   (f1,GaMesDeg1) = cleanPts(fMes,GaMesDeg,0); //enlève les pts qui font planter le plot
+   plot(f1,GaMesDeg1,'b'); //affiche réponse mesurée
+  end
+
+  if af_GaMod
+   GaModDeg = rad2deg(angle(GaMod));
+   plot (fMod,GaModDeg,'m'); //affiche rép. fréq. modèle
+  end
+
+  if af_GaModAsymp
+   GaModAsympDeg = rad2deg(GaModAsymp.pha);
+   plot (fMod,GaModAsympDeg,':m'); //affiche rép. fréq. asymp. modèle
+  end
+
+
+  if af_GaMes && af_GaMod //affichage du titre qui inclut le fit le cas échéant
+
+   //on ne prend que la 1ère moitié des pts pour 2 raisons :
+   // 1.avec une échelle log, une grande partie des pts (répartis linéairement)
+   //   sont groupés à la fin
+   // 2.la fonction de transfert mesurée a toujours beaucoup de bruit à droite
+   //GaMesDb = GaMesDb(1:length(GaMesDb)/2);
+   //GaModDb = GaModDb(1:length(GaModDb)/2);
+
+   //pondération des pts pour la raisons suivantes :
+   // 1.avec une échelle log, une grande partie des pts (répartis linéairement)
+   //   sont groupés à la fin. si on ne fait aucune pondération, le fit est le meilleur
+   //   lorsque la fin de la courbe (plus de pts) colle bien
+   pond = logspace(log10(max(fMes)),log10(min(fMes)),length(fMes)); //vecteur log renversé
+   GaMesDeg = GaMesDeg .* pond;
+   GaModDeg = GaModDeg .* pond;
+
+   //calcul du "fit" (quantification de la qualité du modèle par rapport à la mesure)
+   fit_f = calcFit(GaMesDeg,GaModDeg);
+
+   title(sprintf('Réponse fréquentielle : phase, fit = %.3g',fit_f));
+  else
+   title('Réponse fréquentielle : phase');
+  end
+
+  legend ('mesure\nmodèle\nmodèle asymp.','bmm:');
+  label('f [Hz]');
+ end
+
+
+/***********************************************************************
+affichage des fft d'amplitude des signaux
+entrées
+-fMes : vecteur fréq
+-fftUMes,fftYMes,fftYMod : fft de signal d'excitation, de la réponse mesurée et calculée
+-af_fftUMes_f, af_fftYMes_f, af_fftYMod_f : indication d'afficher ou non respectivement
+ les fft du signal d'excitation, de la réponse mesurée et calculée
+*/
+function drawFftSigAmp (fMes,fftUMes,fftYMes,fftYMod, af_fftUMes_f, af_fftYMes_f, af_fftYMod_f)
+
+ if length(fMes >= minNPtsFreq) //suffisament de pts pour affichage ?
+
+  scale ('loglin'); //échelle log de fréquence
+
+  if af_fftUMes_f //affichage fft signal d'excitation
+   fftUMesDb = lin2db(abs(fftUMes));
+   (x,y) = cleanPts(fMes,fftUMesDb); //enlève les pts qui font planter le plot
+   plot(x,y,':r');
+  end
+
+  if af_fftYMes_f //affichage fft réponse mesurée
+   fftYMesDb = lin2db(abs(fftYMes));
+   (x,y) = cleanPts(fMes,fftYMesDb); //enlève les pts qui font planter le plot
+   plot(x,y,'b');
+  end
+
+  if af_fftYMod_f //affichage fft réponse calculée
+   fftYModDb = lin2db(abs(fftYMod));
+   (x,y) = cleanPts(fMes,fftYModDb); //enlève les pts qui font planter le plot
+   plot(x,y,'m');
+  end
+
+  if af_fftYMes_f && af_fftYMod_f //affichage du titre qui inclut le fit le cas échéant
+
+   //pondération des pts pour la raisons suivantes :
+   // 1.avec une échelle log, une grande partie des pts (répartis linéairement)
+   //   sont groupés à la fin. si on ne fait aucune pondération, le fit est le meilleur
+   //   lorsque la fin de la courbe (plus de pts) colle bien
+   pond = logspace(max(fMes),min(fMes),length(fMes)); //vecteur log renversé
+   fftYMesDb = fftYMesDb .* pond;
+   fftYModDb = fftYModDb .* pond;
+
+   //calcul du "fit" (quantification de la qualité du modèle par rapport à la mesure)
+   fit_f = calcFit(fftYMesDb,fftYModDb); //calcul du fit
+
+   title(sprintf('fft (signaux) : amplitude, fit = %.3g',fit_f));
+  else
+   title('fft (signaux) : amplitude');
+  end
+
+  legend ('excitation\nréponse\nmodèle',':rbm');
+  label('f [Hz]');
+ end
+
+/***********************************************************************
+affichage des fft de phase des signaux
+entrées
+-fMes : vecteur fréq
+-fftUMes,fftYMes,fftYMod : fft de signal d'excitation, de la réponse mesurée et calculée
+-af_fftUMes_f, af_fftYMes_f, af_fftYMod_f : indication d'afficher ou non respectivement
+ les fft du signal d'excitation, de la réponse mesurée et calculée
+*/
+function drawFftSigPha (fMes,fftUMes,fftYMes,fftYMod, af_fftUMes_f, af_fftYMes_f, af_fftYMod_f)
+
+ if length(fMes >= minNPtsFreq) //suffisament de pts pour affichage ?
+
+  scale ('loglin'); //échelle log de fréquence
+
+  if af_fftUMes_f //affichage fft signal d'excitation
+   fftUMesDeg = rad2deg(angle(fftUMes));
+   plot(fMes,fftUMesDeg,':r');
+  end
+
+  if af_fftYMes_f //affichage fft réponse mesurée
+   fftYMesDeg = rad2deg(angle(fftYMes));
+   plot(fMes,fftYMesDeg,'b');
+  end
+
+  if af_fftYMod_f //affichage fft réponse calculée
+   fftYModDeg = rad2deg(angle(fftYMod));
+   plot(fMes,fftYModDeg,'m');
+  end
+
+  if af_fftYMes_f && af_fftYMod_f //affichage du titre qui inclut le fit le cas échéant
+
+   //pondération des pts pour la raisons suivantes :
+   // 1.avec une échelle log, une grande partie des pts (répartis linéairement)
+   //   sont groupés à la fin. si on ne fait aucune pondération, le fit est le meilleur
+   //   lorsque la fin de la courbe (plus de pts) colle bien
+   pond = logspace(max(fMes),min(fMes),length(fMes)); //vecteur log renversé
+   fftYMesDeg = fftYMesDeg .* pond;
+   fftYModDeg = fftYModDeg .* pond;
+
+   //calcul du "fit" (quantification de la qualité du modèle par rapport à la mesure)
+   fit_f = calcFit(fftYMesDeg,fftYModDeg); //calcul du fit
+
+   title(sprintf('fft (signaux) : phase, fit = %.3g',fit_f));
+  else
+   title('fft (signaux) : phase');
+  end
+
+  legend ('excitation\nréponse\nmodèle',':rbm');
+  label('f [Hz]');
+ end
+
+/***********************************************************************
+Calcul des points du signal mesuré. En particulier gère l'enlèvement
+ d'offset et la prise de la 2eme moitie des pts.
+entrées
+-tMesBrut,uMesBrut,yMesBrut : vecteur temps, excitation et reponse mesurés bruts
+ (=valeurs telles qu'elles ont été extraites du fichier)
+-rmvOffset,scndHalf : faut-il enlever l'offset ou ne prendre que la 2eme moitie des pts ?
+sorties
+-tMes,uMes,yMes,fMes : vecteur après traitement, temps, excitation et réponse
+ mesurée et fréquence (le vecteur fréquence fMes est tiré du vecteur temps tMes)
+*/
+function (tMes,uMes,yMes,fMes) = calcSigMes (tMesBrut,uMesBrut,yMesBrut,rmvOffset,scndHalf)
+
+ if ~isempty(tMesBrut)
+  if scndHalf //ne garde que la 2eme moitie des pts le cas échéant
+   indiceMilieu = round(length(tMesBrut)/2)+1; //indice de départ 2eme moitié entier
+   tMes = tMesBrut(indiceMilieu:end);
+   uMes = uMesBrut(indiceMilieu:end);
+   yMes = yMesBrut(indiceMilieu:end);
+  else
+   tMes = tMesBrut;
+   uMes = uMesBrut;
+   yMes = yMesBrut;
+  end
+
+  if rmvOffset
+   //on pourrait peut-etre faire mieux en soustrayant la valeur moyenne...
+   yMes = yMes - yMes(1);
+  end
+
+  //calcul du vecteur fMes qui ne dépend que de tMes
+  N = length(tMes); //nb de pts
+  df = 1 / (N*(tMes(2)-tMes(1))); //incrément fréquentiel
+ //calcul fMes : 1ere moitié seulement car 2 moitiés redondantes et enlève la cpste DC
+  fMes = (1 : N/2 -1) * df;
+
+ else
+  tMes = []; //il faut leur attribuer quelque chose dans tous les cas
+  uMes = []; //
+  yMes = []; //
+  fMes = []; //
+ end
+
+/***********************************************************************
+Calcul de la réponse temporelle du modèle.
+ Gère également l'enlèvement d'offset et la prise de la 2eme moitie des pts
+entrées
+-tMesBrut,uMesBrut : vecteur temps et excitation mesurés bruts
+ (=valeurs telles qu'elles ont été extraites du fichier)
+-numGa,denGa,Tr : paramètres dumodèle en cours (numérateur, dénominateur et retard pur)
+-rmvOffset,scndHalf : faut-il enlever l'offset ou ne prendre que la 2eme moitie des pts ?
+-af_yMod : indication d'afficher ou non la réponse temporelle calculée du modèle
+sorties
+-tMod,yMod : vecteurs temps et réponse calculée du modèle
+*/
+function (tMod,yMod) = calcRepTempMod (tMesBrut,uMesBrut,numGa,denGa,Tr,rmvOffset,scndHalf,af_yMod)
+
+ //calcule la réponse du modèle avec TOUS les pts mesurés de l'excitation
+ //que si nécessaire
+ if af_yMod && ~isempty(tMesBrut)
+  (yMod,tMod) = lsim(numGa,denGa,uMesBrut,tMesBrut); //calcul de la réponse du système
+
+  //ajoute le retard pur le cas échéant
+  if Tr ~= 0
+   l = length(tMod);
+   NRet = min(l,round(Tr / (tMod(2)-tMod(1)))); //retard = combien de pts de décalage ?
+   yMod = [zeros(1,NRet),yMod(1:l-NRet)]; //concatène NRet zéros (retard) et le reste de la réponse
+  end
+
+  if scndHalf //ne garde que la 2eme moitie des pts le cas échéant
+   indiceMilieu = round(length(tMod)/2)+1; //indice de départ 2eme moitié arrondi
+   tMod = tMod(indiceMilieu:end);
+   yMod = yMod(indiceMilieu:end);
+  end
+
+  if rmvOffset
+   //on pourrait peut-etre faire mieux en soustrayant la valeur moyenne...
+   yMod = yMod - yMod(1);
+  end
+
+ else
+  tMod = []; //
+  yMod = []; //obligé de lui assigner qqchose...
+ end
+
+
+/***********************************************************************
+calcul de la fft des signaux mesurés
+entrées
+-uMes,yMes : excitation et réponse mesurées
+-af_GaMes,af_fftUMes_f,af_fftYMes_f,af_fftYMod_f : indication d'afficher ou non la réponse temporelle
+ mesurée, et les fft des signaux d'excitation et réponse mesurée
+sorties
+-fftUMes,fftYMes : fft des signaux d'excitation et réponse mesurée
+*/
+function (fftUMes,fftYMes) = calcFftSigMes (uMes,yMes, af_GaMes, af_fftUMes_f, af_fftYMes_f,af_fftYMod_f)
+
+ N = length(uMes);
+
+ //calcul de la fft du signal d'excitation enregistré UMes
+ //doit etre calculé si elle est affichée, si la reponse fréquentielle mesurée est affichée
+ // (utilisé pour la calculer), ou si la fft de la réponse du modèle est affichée (idem)
+ if af_GaMes || af_fftUMes_f || af_fftYMod_f
+  fftUMes = (fft(uMes))(2:N/2);
+ else
+  fftUMes = []; //il faut les assigner quelque chose dans tous les cas
+ end
+
+ //calcul de la fft de la réponse enregistrée YMes
+ if af_GaMes || af_fftYMes_f //doit etre calculé si elle est affichée ou si la reponse
+                             //fréquentielle mesurée est affichée (utilisé pour la calculer)
+  fftYMes = (fft(yMes))(2:N/2);
+ else
+  fftYMes = []; //il faut les assigner quelque chose dans tous les cas
+ end
+
+/***********************************************************************
+calcul de la fft de la réponse du modèle
+ATTENTION :
+fftYMod (axe y) est appairé avec fMes (axe x) et non fMod car il est calculé
+de la manière suivante : fftYMod = fftUMes .* GaMod (fftUMes a des pts disposés
+sur l'axe x aux pts fMes)
+entrées
+-fftUMes : fft du signal d'excitation
+-GaMod : pts (à fMes) calculés de la fct de transfert du modèle (réponse fréq du modèle)
+-af_fftYMod_f : indication d'afficher ou non la fft de la réponse du modèle
+sorties
+-fftYMod : fft de la réponse du modèle fftYMod
+*/
+function (fftYMod) = calcFftSigMod (fftUMes, GaMod, af_fftYMod_f)
+
+ if af_fftYMod_f //calculée si elle est affichée seulement
+  fftYMod = fftUMes .* GaMod;
+ else
+  fftYMod = []; //il faut les assigner quelque chose dans tous les cas
+ end
+
+/***********************************************************************
+calcul de la réponse fréquentielle d'après les signaux mesurés.
+ -on part du principe que toutes les traces on le meme nb de pts
+entrées
+-fftUMes,fftYMes : fft des signaux d'excitation et de réponse mesurés
+-af_GaMes : indication d'afficher la réponse fréquentielle mesurée
+sorties
+- GaMes : réponse fréquentielle mesurée (pts calculés)
+*/
+function (GaMes) = calcRepFreqMes(fftUMes,fftYMes,af_GaMes)
+
+ if af_GaMes //calculée si elle est affichée seulement
+  GaMes = fftYMes ./ fftUMes;
+ else
+  GaMes = []; //il faut les assigner quelque chose dans tous les cas
+ end
+
+/***********************************************************************
+Calcul de la réponse fréquentielle du modèle en fonction des
+ paramètres du modèle que l'utilisateur a entré.
+entrées
+-fMes : vecteur fréquence mesuré
+-numGa,denGa,Tr : paramètres du modèle
+-af_GaMod,af_GaModAsymp,af_fftYMod_f : indication d'afficher la réponse fréquentielle du modèle
+ (standard et asymptotique), et la fft de la réponse calculée
+sorties
+-fMod,GaMod,GaModAsymp : vecteurs fréquence et réponses fréq. standart et asymptotique
+ du modèle
+*/
+function (fMod,GaMod,GaModAsymp) = calcRepFreqMod(fMes,numGa,denGa,Tr,af_GaMod, af_GaModAsymp,af_fftYMod_f)
+
+ fMod = fMes; //pour l'instant : vecteur fréq du modèle = vecteur fréq de la mesure
+
+ omega = 2*pi*fMod; //vecteur pulsation
+
+ //réponse fréq. du modèle
+ if af_GaMod || af_fftYMod_f //calculée que si elle est elle-même affichée ou que la fft
+                             // de la réponse calculée est affichée (utilisée pour la calculer)
+  //calcule reponse harmonique sans retard pur
+  GaMod = polyval(numGa,j*omega)./polyval(denGa,j*omega);
+  GaMod = GaMod .* exp (-j*omega*Tr); //rajoute le retard pur
+ else
+  GaMod = [];//il faut les assigner quelque chose dans tous les cas
+ end
+
+ //réponse fréq. asymptotique du modèle
+ //la fonction de calcul bode_as donne les deux composantes amplitude et phase
+ //séparément (pas des nb complexes incluant les 2). Elles seront de toutes affichées
+ //séparément, c'est pourquoi on les garde en champs distincts, pour
+ if af_GaModAsymp //calculée si elle est affichée seulement
+  (GaModAsymp.amp,GaModAsymp.pha, omega) = bode_as(numGa,denGa,omega);
+
+  //ajoute l'effet du retard pur et donne une réponse [-pi ; +pi]
+  GaModAsymp.pha = mod(GaModAsymp.pha - omega*Tr + pi,2*pi)-pi;
+ else
+  GaModAsymp.amp = []; //il faut les assigner quelque chose dans tous les cas
+  GaModAsymp.pha = []; //
+ end
+
+/**********************************************************************
+Chargement d'un fichier disque ou émulation de chargement
+et vérification du nb de pts
+entrées
+-disk : indique si il faut charger un vrai fichier disque (disk = true), ou les
+ courbes prédéfinies (0)
+sorties
+-tMesBrut,uMesBrut,yMesBrut : vecteur contenant les données chargées; temps excitation
+ et réponse
+*/
+function (tMesBrut,uMesBrut,yMesBrut) = chargeFichier(disk)
+
+ (tMesBrut,uMesBrut,yMesBrut) = load(disk); //chargement des données
+
+ //vérification du nombre de points, car pour une identification fréq, il est souhaitable
+ //d'avoir un nb de pts = à une puissance de 2 (proprietés FFT)
+ if (~estPuiss2(length(tMesBrut)))
+  dialog ('Pour une identification fréquentielle, le nb de points \ndes signaux devrait être = à une puissance de 2 !');
+ end
+
+
+/*********************************************************************
+gestion du menu "Identification temporelle" :
+ selon l'état de identTemp (booléen), affiche ou non les traces utiles
+ à une identification temporelle.
+entrées
+-identTemp : identification temporelle ?
+sorties
+-identTemp : identification temporelle (togglé)
+-af_uMes,af_yMes,af_yMod : indication d'afficher ou non respectivement l'excitation,
+ la réponse mesurée et celle calculée
+*/
+function (identTemp,af_uMes,af_yMes,af_yMod) = toggleIdentTemp(identTemp)
+ identTemp = not(identTemp);
+ af_uMes = identTemp; //afficher ou pas les traces dépend de si on
+ af_yMes = identTemp; //...procède ou non à une identification temporelle
+ af_yMod = identTemp; //
+
+/*********************************************************************
+gestion du menu "Identification fréquentielle" :
+ selon l'état de identFreq (booléen), affiche ou non les traces utiles
+ à une identification fréquentielle.
+Dans le cas d'une désactivation, l'affichage de la réponse asymptotique est désactivé
+comme tout le reste. Par contre, dans le cas d'une activation, il garde sa valeur actuelle.
+(pas d'activationpar défaut, car tracé asymptotique gourmand en temps de calcul)
+entrées
+-identFreq : identification fréquentielle ?
+-af_GaModAsymp : afficher réponse asymptotique ?
+sorties
+-identFreq : identification fréquentielle (togglé)
+-af_GaMes,af_GaMod,af_GaModAsymp : indication d'afficher ou non respectivement les rép. fréq
+ mesurée, calculée et calculée asymptotique
+*/
+function (identFreq,af_GaMes,af_GaMod,af_GaModAsymp)= toggleIdentFreq (identFreq,af_GaModAsymp);
+ identFreq = not(identFreq);
+ af_GaMes = identFreq; //afficher ou pas les traces dépend de si on
+ af_GaMod = identFreq; //...procède ou non à une identification fréquentielle
+
+ //les bodes asymptotiques ne sont pas activés par défaut (garde la valeur actuelle)...
+ //...par contre, ils sont désactivés par défaut
+ if not(identFreq)
+  af_GaModAsymp = false;
+ end
+
+/**********************************************************************/
+
+
+@}
+
+/**********************************************************************/

@@ -1,0 +1,565 @@
+/***********************************************************************/
+// fichier : mymdl.lml
+// auteur  : SCD
+// date    : 03.10.03
+//
+// description :
+//
+//  librairie qui contient le nécessaire pour la gestion des modèles utilisés :
+//   fonctions pour dessiner les controles, gestion de la souris,
+//   calcul des parametres de la fonction de transfert
+//
+// modifications:
+// date   auteur    modifs
+// 9.11.04 SCD      ajout syst résonnant anti-résonnant
+//
+/***********************************************************************/
+
+public
+
+use mydialog, myutilities, mylinear ;
+//mydialog nécessaire le readPol
+//myutilities nécessaire pour clamp
+//mylinear pour le convNFois
+
+/***********************************************************************/
+//valeurs par défaut (pour initialisation) des modèles
+define defaultMod1 = struct ('Ka',1,            'numGa',[1],'numGaStr','[1]','denGa',[1],'denGaStr','[1]', 'Tr',0);
+define defaultMod2 = struct ('Ka',1, 'T1',0.01, 'T2',0.001,'T3',0.001,'Tr',0);
+define defaultMod3 = struct ('Ka',1, 'T1',0.1,  'numGa',[1],'numGaStr','[1]','denGa',[1],'denGaStr','[1]', 'Tr',0);
+define defaultMod4 = struct ('Ka',1, 'T1',0.1,  'n',1,                'Tr',0);
+define defaultMod5 = struct ('Ka',1, 'T1',0.1,  'numGa',[1],'numGaStr','[1]','denGa',[1],'denGaStr','[1]');
+define defaultMod6 = struct ('Ka',1, 'zeta',1, 'omega_n',1,          'Tr',0);
+define defaultMod7 = struct ('Ka',1, 'zeta_AR',0.5,'omega_n_AR',100,     'T1',0.1,          'zeta_R',0.5,     'omega_n_R',1000, 'Tr',0);
+
+/***********************************************************************/
+
+private
+
+// IMPOSSIBLE de travailler avec les bornes déclarées sous cette forme (structure)
+// L'interpreteur fait certainement un simple remplacement de texte et c'est probablement
+// ca qui complique le tout
+//valeurs min et max pour les paramètres du modèle : [min max]
+/*define limMod1 = struct ('KaMin',0.01,           , 'Tr',[0 10]);
+define limMod2 = struct ('Ka',[0.01 10], 'T1',[0.001 10], 'T2',[0.001 10],'[0.001 10]',0.001,'Tr',[0 10]);
+define limMod3 = struct ('Ka',[0.01 10], 'T1',[0.001 10],  'Tr',[0 10]);
+define limMod4 = struct ('Ka',[0.01 10], 'T1',[0.001 10],  'n',[0 7],                'Tr',[0 10]);
+define limMod5 = struct ('Ka',[0.01 10], 'T1',[0.01 2]);
+define limMod6 = struct ('Ka',[0.01 10], 'zeta',[0 2], 'omega_n',[0.01 20]);
+*/
+
+//valeur min et max des paramètres des modèles
+define mod1KaMin = 1e-6;
+define mod1KaMax = 100;
+define mod1TrMin = 0;
+define mod1TrMax = 10;
+
+define mod2KaMin = 0.01;
+define mod2KaMax = 10;
+define mod2T1Min = 0.001;
+define mod2T1Max = 10;
+define mod2T2Min = 0.001;
+define mod2T2Max = 10;
+define mod2T3Min = 0.001;
+define mod2T3Max = 10;
+define mod2TrMin = 0;
+define mod2TrMax = 10;
+
+define mod3KaMin = 0.01;
+define mod3KaMax = 10;
+define mod3T1Min = 0.001;
+define mod3T1Max = 10;
+define mod3TrMin = 0;
+define mod3TrMax = 10;
+
+define mod4KaMin = 0.01;
+define mod4KaMax = 10;
+define mod4T1Min = 0.001;
+define mod4T1Max = 10;
+define mod4nMin  = 0;
+define mod4nMax  = 7;
+define mod4TrMin = 0;
+define mod4TrMax = 10;
+
+define mod5KaMin = 0.01;
+define mod5KaMax = 10;
+define mod5T1Min = 0.001;
+define mod5T1Max = 10;
+
+define mod6KaMin = 0.01;
+define mod6KaMax = 10;
+define mod6zetaMin = 0;
+define mod6zetaMax = 1;
+define mod6Omega_nMin = 0.01;
+define mod6Omega_nMax = 100;
+define mod6TrMin = 0;
+define mod6TrMax = 10;
+
+define mod7KaMin = 0.0001;
+define mod7KaMax = 10;
+define mod7zeta_ARMin = 0;
+define mod7zeta_ARMax = 1;
+define mod7Omega_n_ARMin = 0.01;
+define mod7Omega_n_ARMax = 10000;
+define mod7T1Min = 0.0001;
+define mod7T1Max = 10;
+define mod7zeta_RMin = 0;
+define mod7zeta_RMax = 1;
+define mod7Omega_n_RMin = 0.1;
+define mod7Omega_n_RMax = 10000;
+
+define mod7TrMin = 0;
+define mod7TrMax = 10;
+
+
+/***********************************************************************/
+
+public
+
+/**********************************************************************
+Affiche les contrôles concernant les paramètres actuels
+des modèles
+entrée
+-mod1...mod6 : paramètres des modèles
+-sysNr : no du modèles en cours
+sortie
+-affichage des contrôles
+*/
+function drawParam2 (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr)
+
+ //boutons radio pour choix du système à identifier...
+ button('\tSyst. quelconque\tFoehn\tRail\tSyst. B\n\tSyst. C\tSyst. D\tSyst. rés. anti-rés.', [sysNr;sysNr-4], 'radiobutton', '', 1);
+
+ //en fonction du type de système choisi, dessine les contrôles correspondants...
+ switch sysNr
+  case 1 //syst. quelconque
+   text ('\n\n\n\n');
+   button('\tKa', 0, 'button', '', 100);
+   slider(sprintf('Ka = %.2g', mod1.Ka), mod1.Ka, [max(mod1KaMin,mod1.Ka/10),min(mod1KaMax,10*mod1.Ka)], 'L', 'b', 101);
+   button('\tnumGa', 0, 'button', '', 102);
+   text (sprintf ('numGa = %s',mod1.numGaStr));
+   button('\tdenGa', 0, 'button', '', 104);
+   text (sprintf ('denGa = %s',mod1.denGaStr));
+   button('\tTr', 0, 'button', '', 106);
+   slider(sprintf('Tr = %.2g', mod1.Tr), mod1.Tr, [mod1TrMin,(mod1.Tr == 0? mod1TrMax:min(mod1TrMax,2*mod1.Tr))], '-', 'b', 107);
+   text ('\n\n');
+
+  case 2 //foehn
+   text ('\n\n');
+   button('\tKa', 0, 'button', '', 200);
+   slider(sprintf('Ka = %.2g', mod2.Ka), mod2.Ka, [max(mod2KaMin,mod2.Ka/10),min(mod2KaMax,10*mod2.Ka)], 'L', 'b', 201);
+   button('\tT1', 0, 'button', '', 202);
+   slider(sprintf('T1 = %.2g', mod2.T1), mod2.T1, [max(mod2T1Min,mod2.T1/10),min(mod2T1Max,10*mod2.T1)], 'L', 'b', 203);
+   button('\tT2', 0, 'button', '', 204);
+   slider(sprintf('T2 = %.2g', mod2.T2), mod2.T2, [max(mod2T2Min,mod2.T2/10),min(mod2T2Max,10*mod2.T2)], 'L', 'b', 205);
+   button('\tT3', 0, 'button', '', 206);
+   slider(sprintf('T3 = %.2g', mod2.T3), mod2.T3, [max(mod2T3Min,mod2.T3/10),min(mod2T3Max,10*mod2.T3)], 'L', 'b', 207);
+   button('\tTr', 0, 'button', '', 208);
+   slider(sprintf('Tr = %.2g', mod2.Tr), mod2.Tr, [mod2TrMin,(mod2.Tr == 0? mod2TrMax:min(mod2TrMax,2*mod2.Tr))], '-', 'b', 209);
+   text ('\n\n');
+
+  case 3 //rail
+   text ('\n\n');
+   button('\tKa', 0, 'button', '', 300);
+   slider(sprintf('Ka = %.2g', mod3.Ka), mod3.Ka, [max(mod3KaMin,mod3.Ka/10),min(mod3KaMax,10*mod3.Ka)], 'L', 'b', 301);
+   button('\tT1', 0, 'button', '', 302);
+   slider(sprintf('T1 = %.2g', mod3.T1), mod3.T1, [max(mod3T1Min,mod3.T1/10),min(mod3T1Max,10*mod3.T1)], 'L', 'b', 303);
+   button('\tnumGa', 0, 'button', '', 304);
+   text (sprintf ('numGa = %s',mod3.numGaStr));
+   button('\tdenGa', 0, 'button', '', 305);
+   text (sprintf ('denGa = %s',mod3.denGaStr));
+   button('\tTr', 0, 'button', '', 306);
+   slider(sprintf('Tr = %.2g', mod3.Tr), mod3.Tr, [mod3TrMin,(mod3.Tr == 0? mod3TrMax:min(mod3TrMax,2*mod3.Tr))], '-', 'b', 307);
+   text ('\n\n');
+
+  case 4 //système B
+   text ('\n\n\n\n');
+   button('\tKa', 0, 'button', '', 400);
+   slider(sprintf('Ka = %.2g', mod4.Ka), mod4.Ka, [max(mod4KaMin,mod4.Ka/10),min(mod4KaMax,10*mod4.Ka)], 'L', 'b', 401);
+   button('\tT1', 0, 'button', '', 402);
+   slider(sprintf('T1 = %.2g', mod4.T1), mod4.T1, [max(mod4T1Min,mod4.T1/10),min(mod4T1Max,10*mod4.T1)], 'L', 'b', 403);
+   button('\tn', 0, 'button', '', 404);
+   slider(sprintf('n = %.2g', mod4.n), mod4.n, [mod4nMin,mod4nMax], '-', 'b', 405);
+   button('\tTr', 0, 'button', '', 406);
+   slider(sprintf('Tr = %.2g', mod4.Tr), mod4.Tr, [mod4TrMin,(mod4.Tr == 0? mod4TrMax:min(mod4TrMax,2*mod4.Tr))], '-', 'b', 407);
+   text ('\n\n');
+
+  case 5 //système C
+   text ('\n\n\n\n');
+   button('\tKa', 0, 'button', '', 500);
+   slider(sprintf('Ka = %.2g', mod5.Ka), mod5.Ka, [max(mod5KaMin,mod5.Ka/10),min(mod5KaMax,10*mod5.Ka)], 'L', 'b', 501);
+   button('\tT1', 0, 'button', '', 502);
+   slider(sprintf('T1 = %.2g', mod5.T1), mod5.T1, [max(mod5T1Min,mod5.T1/10),min(mod5T1Max,10*mod5.T1)], 'L', 'b', 503);
+   button('\tnumGa', 0, 'button', '', 504);
+   text (sprintf ('numGa = %s',mod5.numGaStr));
+   button('\tdenGa', 0, 'button', '', 505);
+   text (sprintf ('denGa = %s',mod5.denGaStr));
+   text ('\n\n');
+
+  case 6 //système D
+   text ('\n\n\n\n');
+   button('\tKa', 0, 'button', '', 600);
+   slider(sprintf('Ka = %.2g', mod6.Ka), mod6.Ka, [max(mod6KaMin,mod6.Ka/10),min(mod6KaMax,10*mod6.Ka)], 'L', 'b', 601);
+   button('\tzeta', 0, 'button', '', 602);
+   slider(sprintf('zeta = %.2g', mod6.zeta), mod6.zeta, [mod6zetaMin,mod6zetaMax], '-', 'b', 603);
+   button('\tomega_n', 0, 'button', '', 604);
+   slider(sprintf('omega_n = %.2g', mod6.omega_n), mod6.omega_n, [max(mod6Omega_nMin,mod6.omega_n/10),min(mod6Omega_nMax,10*mod6.omega_n)], 'L', 'b', 605);
+   button('\tTr', 0, 'button', '', 606);
+   slider(sprintf('Tr = %.2g', mod6.Tr), mod6.Tr, [mod6TrMin,(mod6.Tr == 0? mod6TrMax:min(mod6TrMax,2*mod6.Tr))], '-', 'b', 607);
+   text ('\n\n');
+
+  case 7 //système résonnant anti-résonnant
+   button('\tKa', 0, 'button', '', 700);
+   slider(sprintf('Ka = %.2g', mod7.Ka), mod7.Ka, [max(mod7KaMin,mod7.Ka/10),min(mod7KaMax,10*mod7.Ka)], 'L', 'b', 701);
+
+   button('\tzeta_AR', 0, 'button', '', 702);
+   slider(sprintf('zeta_AR = %.2g', mod7.zeta_AR), mod7.zeta_AR, [mod7zeta_ARMin,mod7zeta_ARMax], '-', 'b', 703);
+   button('\tomega_n_AR', 0, 'button', '', 704);
+   slider(sprintf('omega_n_AR = %.2g', mod7.omega_n_AR), mod7.omega_n_AR, [max(mod7Omega_n_ARMin,mod7.omega_n_AR/10),min(mod7Omega_n_ARMax,10*mod7.omega_n_AR)], 'L', 'b', 705);
+
+   button('\tT1', 0, 'button', '', 706);
+   slider(sprintf('T1 = %.2g', mod7.T1), mod7.T1, [max(mod7T1Min,mod7.T1/10),min(mod7T1Max,10*mod7.T1)], 'L', 'b', 707);
+
+   button('\tzeta_R', 0, 'button', '', 708);
+   slider(sprintf('zeta_R = %.2g', mod7.zeta_R), mod7.zeta_R, [mod7zeta_RMin,mod7zeta_RMax], '-', 'b', 709);
+   button('\tomega_n_R', 0, 'button', '', 710);
+   slider(sprintf('omega_n_R = %.2g', mod7.omega_n_R), mod7.omega_n_R, [max(mod7Omega_n_RMin,mod7.omega_n_R/10),min(mod7Omega_n_RMax,10*mod7.omega_n_R)], 'L', 'b', 711);
+
+   button('\tTr', 0, 'button', '', 712);
+   slider(sprintf('Tr = %.2g', mod7.Tr), mod7.Tr, [mod7TrMin,(mod7.Tr == 0? mod7TrMax:min(mod7TrMax,2*mod7.Tr))], '-', 'b', 713);
+
+  otherwise
+   error(sprintf ('unknown option, sysNr = %d',sysNr)); //toujours utile pour debuggage...
+ end
+
+/**********************************************************************
+gère les actions utilisateurs sur les contrôles des paramètres
+entrées
+-mod1...mod6 : paramètres des modèles
+-sysNr : modèle en cours
+-x1 : utile seulement pour les radiobuttons : colonne
+-nb : utile seulement pour les radiobuttons : ligne
+-id : id du contrôle utilisé
+sorties
+-mod1...mod6 : paramètres des modèles
+-sysNr : modèle en cours
+Les paramètres mod1...mod6 et sysNr sont en entrée et sortie car ils ne sont pas forcément
+modifiés, mais doivent être définis à la sortie de la fonction. Ainsi, s'il ne sont pas
+modifiés, ils gardent la valeur qu'il avaient à l'entrée
+*/
+function (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr) = dragParam2 (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr,x1,nb,id)
+
+ //annulation si aucun contrôle n'est concerné
+ if isempty(id)
+  cancel;
+ end
+
+ switch id
+  case 1 //boutons radio pour choix du système
+   //sysNr = x1 + 3 * (nb - 1);
+   sysNr = x1 + 4 * (nb-1);
+
+  //système 1 (système quelconque)
+  case 100 //bouton Ka
+   (ok,mod1.Ka) = dialog ('Nouvelle valeur de Ka :',mod1.Ka);
+   if ~ok
+    cancel;
+   end
+   mod1.Ka = clamp (mod1.Ka,mod1KaMin,mod1KaMax);
+  case 101 // slider Ka
+   mod1.Ka = x1;
+  case 102 //bouton numGa
+   (mod1.numGa,mod1.numGaStr) = readPol (mod1.numGaStr);
+  case 104 //bouton denGa
+   (mod1.denGa,mod1.denGaStr) = readPol (mod1.denGaStr);
+  case 106 //bouton Tr
+   (ok,mod1.Tr) = dialog ('Nouvelle valeur de Tr :',mod1.Tr);
+   if ~ok
+    cancel;
+   end
+   mod1.Tr = clamp (mod1.Tr,mod1TrMin,mod1TrMax);
+  case 107 //slider Tr
+   mod1.Tr = x1;
+
+  //système 2 (foehn)
+  case 200 //bouton Ka
+   (ok,mod2.Ka) = dialog ('Nouvelle valeur de Ka :',mod2.Ka);
+   if ~ok
+    cancel;
+   end
+   mod2.Ka = clamp (mod2.Ka,mod2KaMin,mod2KaMax);
+  case 201 // slider Ka
+   mod2.Ka = x1;
+  case 202 //bouton T1
+   (ok,mod2.T1) = dialog ('Nouvelle valeur de T1 :',mod2.T1);
+   if ~ok
+    cancel;
+   end
+   mod2.T1 = clamp (mod2.T1,mod2T1Min,mod2T1Max,0);
+  case 203 //slider T1
+   mod2.T1 = x1;
+  case 204 //bouton T2
+   (ok,mod2.T2) = dialog ('Nouvelle valeur de T2 :',mod2.T2);
+   if ~ok
+    cancel;
+   end
+   mod2.T2 = clamp (mod2.T2,mod2T2Min,mod2T2Max,0);
+  case 205 //slider T2
+   mod2.T2 = x1;
+  case 206 //bouton T3
+   (ok,mod2.T3) = dialog ('Nouvelle valeur de T3 :',mod2.T3);
+   if ~ok
+    cancel;
+   end
+   mod2.T3 = clamp (mod2.T3,mod2T3Min,mod2T3Max,0);
+  case 207 //slider T3
+   mod2.T3 = x1;
+  case 208 //bouton Tr
+   (ok,mod2.Tr) = dialog ('Nouvelle valeur de Tr :',mod2.Tr);
+   if ~ok
+    cancel;
+   end
+   mod2.Tr = clamp (mod2.Tr,mod2TrMin,mod2TrMax);
+  case 209 //slider Tr
+   mod2.Tr = x1;
+
+  //système 3 (rail)
+  case 300 //bouton Ka
+   (ok,mod3.Ka) = dialog ('Nouvelle valeur de Ka :',mod3.Ka);
+   if ~ok
+    cancel;
+   end
+   mod3.Ka = clamp (mod3.Ka,mod3KaMin,mod3KaMax);
+  case 301 // slider Ka
+   mod3.Ka = x1;
+  case 302 //bouton T1
+   (ok,mod3.T1) = dialog ('Nouvelle valeur de T1 :',mod3.T1);
+   if ~ok
+    cancel;
+   end
+   mod3.T1 = clamp (mod3.T1,mod3T1Min,mod3T1Max,0);
+  case 303 // slider T1
+   mod3.T1 = x1;
+  case 304 //bouton numGa
+   (mod3.numGa,mod3.numGaStr) = readPol (mod3.numGaStr);
+  case 305 //bouton denGa
+   (mod3.denGa,mod3.denGaStr) = readPol (mod3.denGaStr);
+  case 306 //bouton Tr
+   (ok,mod3.Tr) = dialog ('Nouvelle valeur de Tr :',mod3.Tr);
+   if ~ok
+    cancel;
+   end
+   mod3.Tr = clamp (mod3.Tr,mod3TrMin,mod3TrMax);
+  case 307 //slider Tr
+   mod3.Tr = x1;
+
+  //système 4 (système B)
+  case 400 //bouton Ka
+   (ok,mod4.Ka) = dialog ('Nouvelle valeur de Ka :',mod4.Ka);
+   if ~ok
+    cancel;
+   end
+   mod4.Ka = clamp (mod4.Ka,mod4KaMin,mod4KaMax);
+  case 401 // slider Ka
+   mod4.Ka = x1;
+  case 402 //bouton T1
+   (ok,mod4.T1) = dialog ('Nouvelle valeur de T1 :',mod4.T1);
+   if ~ok
+    cancel;
+   end
+   mod4.T1 = clamp (mod4.T1,mod4T1Min,mod4T1Max,0);
+  case 403 // slider T1
+   mod4.T1 = x1;
+  case 404 //bouton n
+   (ok,mod4.n) = dialog ('Nouvelle valeur de n :',mod4.n);
+   if ~ok
+    cancel;
+   end
+   mod4.n = clamp (mod4.n,mod4nMin,mod4nMax);
+   mod4.n = round(mod4.n); //arrondi car l'ordre du systeme est un entier
+  case 405 // slider n
+   mod4.n = round(x1);
+  case 406 //bouton Tr
+   (ok,mod4.Tr) = dialog ('Nouvelle valeur de Tr :',mod4.Tr);
+   if ~ok
+    cancel;
+   end
+   mod4.Tr = clamp (mod4.Tr,mod4TrMin,mod4TrMax);
+  case 407 //slider Tr
+   mod4.Tr = x1;
+
+  //système 5 (système C)
+  case 500 //bouton Ka
+   (ok,mod5.Ka) = dialog ('Nouvelle valeur de Ka :',mod5.Ka);
+   if ~ok
+    cancel;
+   end
+   mod5.Ka = clamp (mod5.Ka,mod5KaMin,mod5KaMax);
+  case 501 // slider Ka
+   mod5.Ka = x1;
+  case 502 //bouton T1
+   (ok,mod5.T1) = dialog ('Nouvelle valeur de T1 :',mod5.T1);
+   if ~ok
+    cancel;
+   end
+   mod5.T1 = clamp (mod5.T1,mod5T1Min,mod5T1Max,0);
+  case 503 // slider T1
+   mod5.T1 = x1;
+  case 504 //bouton numGa
+   (mod5.numGa,mod5.numGaStr) = readPol (mod5.numGaStr);
+  case 505 //bouton denGa
+   (mod5.denGa,mod5.denGaStr) = readPol (mod5.denGaStr);
+
+  //système 6 (système D)
+  case 600 //bouton Ka
+   (ok,mod6.Ka) = dialog ('Nouvelle valeur de Ka :',mod6.Ka);
+   if ~ok
+    cancel;
+   end
+   mod6.Ka = clamp (mod6.Ka,mod6KaMin,mod6KaMax);
+  case 601 // slider Ka
+   mod6.Ka = x1;
+  case 602 //bouton zeta
+   (ok,mod6.zeta) = dialog ('Nouvelle valeur de zeta :',mod6.zeta);
+   if ~ok
+    cancel;
+   end
+   mod6.zeta = clamp (mod6.zeta,mod6zetaMin,mod6zetaMax);
+  case 603 //slider zeta
+   mod6.zeta = x1;
+  case 604 //bouton omega_n
+   (ok,mod6.omega_n) = dialog ('Nouvelle valeur de omega_n :',mod6.omega_n);
+   if ~ok
+    cancel;
+   end
+   mod6.omega_n = clamp (mod6.omega_n,mod6Omega_nMin,mod6Omega_nMax);
+  case 605 //slider omega_n
+   mod6.omega_n = x1;
+  case 606 //bouton Tr
+   (ok,mod6.Tr) = dialog ('Nouvelle valeur de Tr :',mod6.Tr);
+   if ~ok
+    cancel;
+   end
+   mod6.Tr = clamp (mod6.Tr,mod6TrMin,mod6TrMax);
+  case 607 //slider Tr
+   mod6.Tr = x1;
+
+  //système 7 (système résonnant anti-résonnant)
+  case 700 //bouton Ka
+   (ok,mod7.Ka) = dialog ('Nouvelle valeur de Ka :',mod7.Ka);
+   if ~ok
+    cancel;
+   end
+   mod7.Ka = clamp (mod7.Ka,mod7KaMin,mod7KaMax);
+  case 701 // slider Ka
+   mod7.Ka = x1;
+  case 702 //bouton zeta_AR
+   (ok,mod7.zeta_AR) = dialog ('Nouvelle valeur de zeta_AR :',mod7.zeta_AR);
+   if ~ok
+    cancel;
+   end
+   mod7.zeta_AR = clamp (mod7.zeta_AR,mod7zeta_ARMin,mod7zeta_ARMax);
+  case 703 //slider zeta
+   mod7.zeta_AR = x1;
+  case 704 //bouton omega_n
+   (ok,mod7.omega_n_AR) = dialog ('Nouvelle valeur de omega_n_AR :',mod7.omega_n_AR);
+   if ~ok
+    cancel;
+   end
+   mod7.omega_n_AR = clamp (mod7.omega_n_AR,mod7Omega_n_ARMin,mod7Omega_n_ARMax);
+  case 705 //slider omega_n
+   mod7.omega_n_AR = x1;
+  case 706 //bouton T1
+   (ok,mod7.T1) = dialog ('Nouvelle valeur de T1 :',mod7.T1);
+   if ~ok
+    cancel;
+   end
+   mod7.T1 = clamp (mod7.T1,mod7T1Min,mod7T1Max,0);
+  case 707 // slider T1
+   mod7.T1 = x1;
+  case 708 //bouton zeta_R
+   (ok,mod7.zeta_R) = dialog ('Nouvelle valeur de zeta_R :',mod7.zeta_R);
+   if ~ok
+    cancel;
+   end
+   mod7.zeta_R = clamp (mod7.zeta_R,mod7zeta_RMin,mod7zeta_RMax);
+  case 709 //slider zeta
+   mod7.zeta_R = x1;
+  case 710 //bouton omega_n
+   (ok,mod7.omega_n_R) = dialog ('Nouvelle valeur de omega_n_R :',mod7.omega_n_R);
+   if ~ok
+    cancel;
+   end
+   mod7.omega_n_R = clamp (mod7.omega_n_R,mod7Omega_n_RMin,mod7Omega_n_RMax);
+  case 711 //slider omega_n
+   mod7.omega_n_R = x1;
+
+  case 712 //bouton Tr
+   (ok,mod7.Tr) = dialog ('Nouvelle valeur de Tr :',mod7.Tr);
+   if ~ok
+    cancel;
+   end
+   mod7.Tr = clamp (mod7.Tr,mod7TrMin,mod7TrMax);
+  case 713 //slider Tr
+   mod7.Tr = x1;
+
+  otherwise
+   error(sprintf ('unknown option, id = %d',id)); //toujours utile pour debuggage...
+ end
+
+/***********************************************************************/
+/***********************************************************************
+fonction qui calcule la fonction de transfert du modèle en fonction
+des paramètres que l'utilisateur à rentré
+entrées
+-mod1...mod6 : paramètres des modèles
+-sysNr : modèle actuel
+sorties
+-numGa,denGa : numérateur et dénominateur de la fct de transfert du modèle choisi
+-Tr : retard pur associé
+*/
+function (numGa,denGa,Tr) = calcFctTrans (mod1,mod2,mod3,mod4,mod5,mod6,mod7,sysNr)
+
+ //recompose la fonction de transfert continue
+ switch sysNr //choix du système
+ case 1 //Système quelconque
+   numGa = mod1.Ka * mod1.numGa;
+   denGa = mod1.denGa;
+   Tr    = mod1.Tr;
+  case 2 //foehn
+   numGa = mod2.Ka;
+   denGa = conv([mod2.T1 1],conv([mod2.T2 1],[mod2.T3 1]));
+   Tr    = mod2.Tr;
+  case 3 //rail
+   numGa = mod3.Ka * mod3.numGa;
+   denGa = conv([mod3.T1 1],mod3.denGa);
+   Tr    = mod3.Tr;
+  case 4 //Système B
+   numGa = mod4.Ka;
+   denGa = convNFois([mod4.T1 1],mod4.n);
+   Tr    = mod4.Tr;
+  case 5 //Système C
+   numGa = mod5.Ka * conv([-mod5.T1 1],mod5.numGa);
+   denGa = conv([mod5.T1 1],mod5.denGa);
+   Tr    = 0;
+  case 6 //Système D
+   numGa = mod6.Ka;
+   denGa = [1/(mod6.omega_n)^2 2*mod6.zeta/mod6.omega_n 1];
+   Tr    = mod6.Tr;
+  case 7 //Système résonnant anti-résonnant
+   numGa = mod7.Ka * [1/(mod7.omega_n_AR)^2 2*mod7.zeta_AR/mod7.omega_n_AR 1];
+   denGa = conv([1/(mod7.omega_n_R)^2 2*mod7.zeta_R/mod7.omega_n_R 1],[mod7.T1 1]);
+   Tr    = mod7.Tr;
+
+  otherwise
+   error(sprintf ('unknown option, sysNr = %d',sysNr)); //toujours utile pour debuggage...
+ end
+
+ //(numGa,denGa) = minreal(numGa,denGa);
+
+/***********************************************************************/
+
+//private
+
+/***********************************************************************/
+
